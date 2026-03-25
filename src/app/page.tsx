@@ -144,23 +144,38 @@ function Carousel3D({ children }: { children: React.ReactNode[] }) {
 }
 
 /* ─── AGENT CARD ─── */
-function AgentCard({ agent }: { agent: typeof AGENTS[0] }) {
+function AgentCard({ agent, compact }: { agent: typeof AGENTS[0]; compact?: boolean }) {
   return (
-    <div className="group bg-white border border-gray-200 rounded-2xl p-6 hover:border-gray-300 hover:shadow-lg hover:shadow-gray-100/80 transition-all cursor-pointer h-full">
-      <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110" style={{ background: `${agent.color}10` }}>
+    <div className={`group bg-white rounded-2xl p-5 transition-all cursor-pointer ${
+      compact ? "h-full flex flex-col" : "border border-gray-200 p-6 hover:border-gray-300 hover:shadow-lg hover:shadow-gray-100/80"
+    }`}>
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 shrink-0 transition-transform group-hover:scale-110" style={{ background: `${agent.color}10` }}>
         <agent.icon className="w-5 h-5" style={{ color: agent.color }} />
       </div>
-      <h3 className="text-[15px] font-semibold text-gray-950 mb-1">{agent.name}</h3>
-      <p className="text-sm text-gray-500 leading-relaxed">{agent.role}</p>
-      <div className="flex items-center gap-1 mt-4 text-sm font-medium text-gray-400 group-hover:text-accent transition-colors">
-        Decouvrir <ChevronRight className="w-3.5 h-3.5" />
-      </div>
+      <h3 className="text-[14px] font-semibold text-gray-950 mb-1 leading-tight">{agent.name}</h3>
+      <p className="text-[13px] text-gray-500 leading-snug line-clamp-2">{agent.role}</p>
+      {!compact && (
+        <div className="flex items-center gap-1 mt-4 text-sm font-medium text-gray-400 group-hover:text-accent transition-colors">
+          Decouvrir <ChevronRight className="w-3.5 h-3.5" />
+        </div>
+      )}
     </div>
   );
 }
 
 /* ─── FEATURE CARD ─── */
-function FeatureCard({ f }: { f: typeof FEATURES[0] }) {
+function FeatureCard({ f, compact }: { f: typeof FEATURES[0]; compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="flex flex-col p-5 bg-white rounded-2xl h-full">
+        <div className="w-10 h-10 rounded-xl bg-accent/5 flex items-center justify-center shrink-0 mb-3">
+          <f.icon className="w-5 h-5 text-accent" />
+        </div>
+        <h3 className="text-[14px] font-semibold text-gray-950 mb-1.5 leading-tight">{f.title}</h3>
+        <p className="text-[13px] text-gray-500 leading-snug line-clamp-3">{f.desc}</p>
+      </div>
+    );
+  }
   return (
     <div className="flex gap-5 p-6 sm:p-7 rounded-2xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-lg hover:shadow-gray-100/60 transition-all h-full">
       <div className="w-12 h-12 rounded-xl bg-accent/5 flex items-center justify-center shrink-0">
@@ -301,7 +316,7 @@ export default function LandingPage() {
           <div className="md:hidden">
             <Carousel3D>
               {AGENTS.map((agent) => (
-                <AgentCard key={agent.name} agent={agent} />
+                <AgentCard key={agent.name} agent={agent} compact />
               ))}
             </Carousel3D>
           </div>
@@ -354,7 +369,7 @@ export default function LandingPage() {
           <div className="md:hidden">
             <Carousel3D>
               {FEATURES.map((f) => (
-                <FeatureCard key={f.title} f={f} />
+                <FeatureCard key={f.title} f={f} compact />
               ))}
             </Carousel3D>
           </div>

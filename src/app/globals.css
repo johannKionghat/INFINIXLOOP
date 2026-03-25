@@ -175,6 +175,7 @@ body {
 .carousel-3d-card {
   position: absolute;
   width: 280px;
+  height: 200px;
   border-radius: 20px;
   overflow: hidden;
   transition: all 0.7s cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -234,13 +235,13 @@ body {
 
 @media (max-width: 640px) {
   .carousel-3d-container { padding: 0 40px; }
-  .carousel-3d-card { width: 240px; }
-  .carousel-3d-track { min-height: 300px; }
+  .carousel-3d-card { width: 240px; height: 200px; }
+  .carousel-3d-track { min-height: 280px; }
   .carousel-3d-btn { width: 36px; height: 36px; }
 }
 @media (max-width: 400px) {
   .carousel-3d-container { padding: 0 32px; }
-  .carousel-3d-card { width: 220px; }
+  .carousel-3d-card { width: 220px; height: 200px; }
 }
 
 /* Badge dot */
