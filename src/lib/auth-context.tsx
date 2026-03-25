@@ -66,12 +66,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = async (email: string, password: string, name: string): Promise<{ error?: string; needsConfirmation?: boolean }> => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name } },
+      options: {
+        data: { full_name: name },
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
     if (error) return { error: error.message };
+    // If user is auto-confirmed (no email confirmation required), session exists
+    if (data.session) {
+      return {};
+    }
+    // If identities is empty, user already exists
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      return { error: "Un compte existe deja avec cet email" };
+    }
     return { needsConfirmation: true };
   };
 

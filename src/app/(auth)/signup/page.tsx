@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { InfinixLoopLogo } from "@/components/logo";
 import { useAuth } from "@/lib/auth-context";
@@ -11,8 +12,9 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const { signup } = useAuth();
+  const router = useRouter();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,8 +25,11 @@ export default function SignupPage() {
       const result = await signup(email, password, name);
       if (result.error) {
         setError(result.error);
+      } else if (result.needsConfirmation) {
+        setNeedsConfirmation(true);
       } else {
-        setSuccess(true);
+        // Auto-confirmed — redirect to dashboard
+        router.push("/overview");
       }
     } catch {
       setError("Une erreur est survenue");
@@ -33,7 +38,7 @@ export default function SignupPage() {
     }
   };
 
-  if (success) {
+  if (needsConfirmation) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white px-4">
         <div className="w-full max-w-[400px] text-center">

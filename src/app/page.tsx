@@ -1,11 +1,15 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Radio, BookOpen, Clapperboard, Globe, Video, Image, LayoutTemplate,
   Scissors, Mail, MessageCircle, Bot, ClipboardList, ArrowRight,
-  Zap, Shield, BarChart3, Sparkles, ChevronRight, Play, Check,
+  Zap, Shield, BarChart3, Sparkles, ChevronRight, ChevronLeft, Play, Check,
 } from "lucide-react";
 import { InfinixLoopLogo } from "@/components/logo";
 
+/* ─── DATA ─── */
 const AGENTS = [
   { name: "Informateur", role: "Veille IA & Tendances", icon: Radio, color: "#0ea5e9" },
   { name: "Redacteur", role: "Ebooks & Contenus longs", icon: BookOpen, color: "#8b5cf6" },
@@ -22,21 +26,9 @@ const AGENTS = [
 ];
 
 const STEPS = [
-  {
-    num: "01",
-    title: "Decrivez votre projet",
-    desc: "Expliquez votre objectif en langage naturel. L'orchestrateur analyse et selectionne les agents adaptes.",
-  },
-  {
-    num: "02",
-    title: "Les agents s'executent",
-    desc: "Chaque agent travaille en parallele : redaction, creation visuelle, publication, analyse. Tout est automatise.",
-  },
-  {
-    num: "03",
-    title: "Recuperez vos resultats",
-    desc: "Ebooks, videos, landing pages, emails — tout est genere et pret a deployer en quelques minutes.",
-  },
+  { num: "01", title: "Decrivez votre projet", desc: "Expliquez votre objectif en langage naturel. L\u2019orchestrateur analyse et selectionne les agents adaptes." },
+  { num: "02", title: "Les agents s\u2019executent", desc: "Chaque agent travaille en parallele : redaction, creation visuelle, publication, analyse. Tout est automatise." },
+  { num: "03", title: "Recuperez vos resultats", desc: "Ebooks, videos, landing pages, emails — tout est genere et pret a deployer en quelques minutes." },
 ];
 
 const FEATURES = [
@@ -48,14 +40,145 @@ const FEATURES = [
 
 const STATS = [
   { value: "12", label: "Agents IA specialises" },
-  { value: "94%", label: "Taux d'automatisation" },
+  { value: "94%", label: "Taux d\u2019automatisation" },
   { value: "68h", label: "Economisees par mois" },
   { value: "3min", label: "Pour un ebook complet" },
 ];
 
-export default function LandingPage() {
+/* ─── SCROLL REVEAL HOOK ─── */
+function useReveal() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { el.classList.add("visible"); observer.unobserve(el); } },
+      { threshold: 0.15, rootMargin: "0px 0px -40px 0px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return ref;
+}
+
+/* ─── CAROUSEL COMPONENT ─── */
+function Carousel({ children, itemWidth = 280, gap = 16 }: { children: React.ReactNode[]; itemWidth?: number; gap?: number }) {
+  const [index, setIndex] = useState(0);
+  const [containerW, setContainerW] = useState(0);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const autoRef = useRef<NodeJS.Timeout | null>(null);
+  const total = children.length;
+
+  useEffect(() => {
+    const measure = () => { if (viewportRef.current) setContainerW(viewportRef.current.offsetWidth); };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  const visibleCount = Math.max(1, Math.floor((containerW + gap) / (itemWidth + gap)));
+  const maxIndex = Math.max(0, total - visibleCount);
+
+  const go = useCallback((dir: number) => {
+    setIndex((prev) => Math.max(0, Math.min(maxIndex, prev + dir)));
+  }, [maxIndex]);
+
+  // Auto-play
+  useEffect(() => {
+    autoRef.current = setInterval(() => {
+      setIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+    }, 4000);
+    return () => { if (autoRef.current) clearInterval(autoRef.current); };
+  }, [maxIndex]);
+
+  const pause = () => { if (autoRef.current) clearInterval(autoRef.current); };
+  const resume = () => {
+    pause();
+    autoRef.current = setInterval(() => {
+      setIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+    }, 4000);
+  };
+
+  const offset = -(index * (itemWidth + gap));
+
   return (
-    <div className="min-h-screen bg-white">
+    <div className="relative" onMouseEnter={pause} onMouseLeave={resume}>
+      <div ref={viewportRef} className="carousel-viewport">
+        <div className="carousel-track-inner" style={{ transform: `translateX(${offset}px)`, gap: `${gap}px` }}>
+          {children.map((child, i) => (
+            <div key={i} style={{ width: itemWidth, flexShrink: 0 }}>{child}</div>
+          ))}
+        </div>
+        {index > 0 && (
+          <button className="carousel-nav-btn prev" onClick={() => go(-1)} aria-label="Precedent">
+            <ChevronLeft className="w-5 h-5 text-gray-600" />
+          </button>
+        )}
+        {index < maxIndex && (
+          <button className="carousel-nav-btn next" onClick={() => go(1)} aria-label="Suivant">
+            <ChevronRight className="w-5 h-5 text-gray-600" />
+          </button>
+        )}
+      </div>
+      {total > visibleCount && (
+        <div className="carousel-dot-bar">
+          {Array.from({ length: maxIndex + 1 }).map((_, i) => (
+            <button key={i} className={`carousel-dot-item${i === index ? " active" : ""}`} onClick={() => setIndex(i)} aria-label={`Slide ${i + 1}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── AGENT CARD ─── */
+function AgentCard({ agent }: { agent: typeof AGENTS[0] }) {
+  return (
+    <div className="group bg-white border border-gray-200 rounded-2xl p-6 hover:border-gray-300 hover:shadow-lg hover:shadow-gray-100/80 transition-all cursor-pointer h-full">
+      <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110" style={{ background: `${agent.color}10` }}>
+        <agent.icon className="w-5 h-5" style={{ color: agent.color }} />
+      </div>
+      <h3 className="text-[15px] font-semibold text-gray-950 mb-1">{agent.name}</h3>
+      <p className="text-sm text-gray-500 leading-relaxed">{agent.role}</p>
+      <div className="flex items-center gap-1 mt-4 text-sm font-medium text-gray-400 group-hover:text-accent transition-colors">
+        Decouvrir <ChevronRight className="w-3.5 h-3.5" />
+      </div>
+    </div>
+  );
+}
+
+/* ─── FEATURE CARD ─── */
+function FeatureCard({ f }: { f: typeof FEATURES[0] }) {
+  return (
+    <div className="flex gap-5 p-6 sm:p-7 rounded-2xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-lg hover:shadow-gray-100/60 transition-all h-full">
+      <div className="w-12 h-12 rounded-xl bg-accent/5 flex items-center justify-center shrink-0">
+        <f.icon className="w-5.5 h-5.5 text-accent" />
+      </div>
+      <div>
+        <h3 className="text-[16px] font-semibold text-gray-950 mb-1.5">{f.title}</h3>
+        <p className="text-[15px] text-gray-500 leading-relaxed">{f.desc}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   MAIN PAGE
+   ═══════════════════════════════════════════════ */
+export default function LandingPage() {
+  const heroRef = useReveal();
+  const statsRef = useReveal();
+  const agentsHeaderRef = useReveal();
+  const agentsGridRef = useReveal();
+  const stepsHeaderRef = useReveal();
+  const stepsGridRef = useReveal();
+  const featHeaderRef = useReveal();
+  const featGridRef = useReveal();
+  const ctaRef = useReveal();
+  const footerRef = useReveal();
+
+  return (
+    <div className="min-h-screen bg-white overflow-x-hidden">
       {/* ─── NAVBAR ─── */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-gray-200/60">
         <div className="max-w-[1200px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -75,7 +198,7 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link href="/login" className="text-sm font-medium text-gray-600 hover:text-gray-950 transition-colors no-underline">
+            <Link href="/login" className="text-sm font-medium text-gray-600 hover:text-gray-950 transition-colors no-underline hidden sm:inline">
               Connexion
             </Link>
             <Link
@@ -90,32 +213,28 @@ export default function LandingPage() {
       </nav>
 
       {/* ─── HERO ─── */}
-      <section className="pt-28 sm:pt-40 pb-16 sm:pb-24 px-4 sm:px-6 relative overflow-hidden">
-        {/* Background gradient */}
+      <section className="pt-28 sm:pt-40 pb-16 sm:pb-24 px-5 sm:px-6 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-white" />
         <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-accent/5 rounded-full blur-[120px]" />
 
         <div className="max-w-[1200px] mx-auto relative">
-          <div className="max-w-[720px] mx-auto text-center">
+          <div ref={heroRef} className="reveal max-w-[720px] mx-auto text-center">
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-gray-200 bg-white mb-8 shadow-sm">
               <span className="w-2 h-2 rounded-full bg-accent animate-pulse-glow" />
               <span className="text-sm text-gray-600">12 agents IA autonomes a votre service</span>
             </div>
 
-            {/* Headline */}
-            <h1 className="text-[32px] sm:text-[42px] md:text-[56px] leading-[1.12] font-bold text-gray-950 tracking-tight mb-6">
+            <h1 className="text-[28px] sm:text-[42px] md:text-[56px] leading-[1.12] font-bold text-gray-950 tracking-tight mb-6">
               Automatisez votre business avec des
               <span className="gradient-text"> agents IA autonomes</span>
             </h1>
 
-            {/* Subtitle */}
             <p className="text-base sm:text-lg text-gray-500 leading-relaxed mb-8 sm:mb-10 max-w-[560px] mx-auto">
               Ebooks, videos, landing pages, emails, visuels — 12 agents specialises
               executent vos projets en quelques minutes. Concentrez-vous sur l&apos;essentiel.
             </p>
 
-            {/* CTAs */}
             <div className="flex items-center justify-center gap-4 max-sm:flex-col max-sm:gap-3">
               <Link
                 href="/signup"
@@ -134,12 +253,12 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Stats bar */}
-          <div className="mt-12 sm:mt-20 grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-200 rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
+          {/* Stats */}
+          <div ref={statsRef} className="reveal-scale mt-12 sm:mt-20 grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-200 rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
             {STATS.map((s) => (
-              <div key={s.label} className="bg-white px-8 py-7 text-center">
-                <div className="text-3xl font-bold text-gray-950 tracking-tight">{s.value}</div>
-                <div className="text-sm text-gray-500 mt-1">{s.label}</div>
+              <div key={s.label} className="bg-white px-6 sm:px-8 py-6 sm:py-7 text-center">
+                <div className="text-2xl sm:text-3xl font-bold text-gray-950 tracking-tight">{s.value}</div>
+                <div className="text-xs sm:text-sm text-gray-500 mt-1">{s.label}</div>
               </div>
             ))}
           </div>
@@ -147,58 +266,53 @@ export default function LandingPage() {
       </section>
 
       {/* ─── AGENTS ─── */}
-      <section id="agents" className="section-padding px-4 sm:px-6">
+      <section id="agents" className="section-padding px-5 sm:px-6">
         <div className="max-w-[1200px] mx-auto">
-          <div className="text-center mb-16">
+          <div ref={agentsHeaderRef} className="reveal text-center mb-12 sm:mb-16">
             <p className="text-sm font-semibold text-accent uppercase tracking-wider mb-3">Nos agents</p>
-            <h2 className="text-[40px] font-bold text-gray-950 tracking-tight mb-4 max-md:text-3xl">
+            <h2 className="text-2xl sm:text-[40px] font-bold text-gray-950 tracking-tight mb-4">
               12 agents specialises pour chaque besoin
             </h2>
-            <p className="text-lg text-gray-500 max-w-[520px] mx-auto">
+            <p className="text-base sm:text-lg text-gray-500 max-w-[520px] mx-auto">
               Chaque agent maitrise un domaine precis et utilise les meilleures APIs du marche.
             </p>
           </div>
 
-          <div className="grid grid-cols-4 max-lg:grid-cols-3 max-md:grid-cols-2 max-sm:grid-cols-1 gap-4">
+          {/* Desktop grid */}
+          <div ref={agentsGridRef} className="hidden md:grid stagger-children grid-cols-3 lg:grid-cols-4 gap-4">
             {AGENTS.map((agent) => (
-              <div
-                key={agent.name}
-                className="group bg-white border border-gray-200 rounded-2xl p-6 hover:border-gray-300 hover:shadow-lg hover:shadow-gray-100/80 transition-all cursor-pointer"
-              >
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110"
-                  style={{ background: `${agent.color}10` }}
-                >
-                  <agent.icon className="w-5 h-5" style={{ color: agent.color }} />
-                </div>
-                <h3 className="text-[15px] font-semibold text-gray-950 mb-1">{agent.name}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{agent.role}</p>
-                <div className="flex items-center gap-1 mt-4 text-sm font-medium text-gray-400 group-hover:text-accent transition-colors">
-                  Decouvrir <ChevronRight className="w-3.5 h-3.5" />
-                </div>
-              </div>
+              <AgentCard key={agent.name} agent={agent} />
             ))}
+          </div>
+
+          {/* Mobile carousel */}
+          <div className="md:hidden">
+            <Carousel itemWidth={260} gap={14}>
+              {AGENTS.map((agent) => (
+                <AgentCard key={agent.name} agent={agent} />
+              ))}
+            </Carousel>
           </div>
         </div>
       </section>
 
       {/* ─── HOW IT WORKS ─── */}
-      <section id="how" className="section-padding px-4 sm:px-6 bg-gray-50">
+      <section id="how" className="section-padding px-5 sm:px-6 bg-gray-50">
         <div className="max-w-[1200px] mx-auto">
-          <div className="text-center mb-16">
+          <div ref={stepsHeaderRef} className="reveal text-center mb-12 sm:mb-16">
             <p className="text-sm font-semibold text-accent uppercase tracking-wider mb-3">Comment ca marche</p>
-            <h2 className="text-[40px] font-bold text-gray-950 tracking-tight mb-4 max-md:text-3xl">
+            <h2 className="text-2xl sm:text-[40px] font-bold text-gray-950 tracking-tight mb-4">
               Lancez votre projet en 3 etapes
             </h2>
-            <p className="text-lg text-gray-500 max-w-[520px] mx-auto">
+            <p className="text-base sm:text-lg text-gray-500 max-w-[520px] mx-auto">
               Pas de configuration complexe. Decrivez, lancez, recuperez.
             </p>
           </div>
 
-          <div className="grid grid-cols-3 max-md:grid-cols-1 gap-8">
+          <div ref={stepsGridRef} className="stagger-children grid grid-cols-1 md:grid-cols-3 gap-8">
             {STEPS.map((step) => (
               <div key={step.num} className="relative">
-                <div className="text-[64px] font-bold text-gray-100 leading-none mb-4">{step.num}</div>
+                <div className="text-[56px] sm:text-[64px] font-bold text-gray-100 leading-none mb-4">{step.num}</div>
                 <h3 className="text-xl font-semibold text-gray-950 mb-3">{step.title}</h3>
                 <p className="text-[15px] text-gray-500 leading-relaxed">{step.desc}</p>
               </div>
@@ -208,42 +322,44 @@ export default function LandingPage() {
       </section>
 
       {/* ─── FEATURES ─── */}
-      <section id="features" className="section-padding px-4 sm:px-6">
+      <section id="features" className="section-padding px-5 sm:px-6">
         <div className="max-w-[1200px] mx-auto">
-          <div className="text-center mb-16">
+          <div ref={featHeaderRef} className="reveal text-center mb-12 sm:mb-16">
             <p className="text-sm font-semibold text-accent uppercase tracking-wider mb-3">Avantages</p>
-            <h2 className="text-[40px] font-bold text-gray-950 tracking-tight mb-4 max-md:text-3xl">
+            <h2 className="text-2xl sm:text-[40px] font-bold text-gray-950 tracking-tight mb-4">
               Concu pour les entrepreneurs ambitieux
             </h2>
           </div>
 
-          <div className="grid grid-cols-2 max-md:grid-cols-1 gap-6">
+          {/* Desktop grid */}
+          <div ref={featGridRef} className="hidden md:grid stagger-children grid-cols-2 gap-6">
             {FEATURES.map((f) => (
-              <div key={f.title} className="flex gap-5 p-7 rounded-2xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-lg hover:shadow-gray-100/60 transition-all">
-                <div className="w-12 h-12 rounded-xl bg-accent/5 flex items-center justify-center shrink-0">
-                  <f.icon className="w-5.5 h-5.5 text-accent" />
-                </div>
-                <div>
-                  <h3 className="text-[16px] font-semibold text-gray-950 mb-1.5">{f.title}</h3>
-                  <p className="text-[15px] text-gray-500 leading-relaxed">{f.desc}</p>
-                </div>
-              </div>
+              <FeatureCard key={f.title} f={f} />
             ))}
+          </div>
+
+          {/* Mobile carousel */}
+          <div className="md:hidden">
+            <Carousel itemWidth={300} gap={14}>
+              {FEATURES.map((f) => (
+                <FeatureCard key={f.title} f={f} />
+              ))}
+            </Carousel>
           </div>
         </div>
       </section>
 
       {/* ─── CTA ─── */}
-      <section className="section-padding px-4 sm:px-6">
-        <div className="max-w-[800px] mx-auto text-center bg-gray-950 rounded-3xl px-6 py-10 sm:px-12 sm:py-16 relative overflow-hidden">
+      <section className="section-padding px-5 sm:px-6">
+        <div ref={ctaRef} className="reveal-scale max-w-[800px] mx-auto text-center bg-gray-950 rounded-3xl px-6 py-10 sm:px-12 sm:py-16 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-accent/10 rounded-full blur-[80px]" />
           <div className="absolute bottom-0 left-0 w-[200px] h-[200px] bg-accent/5 rounded-full blur-[60px]" />
 
           <div className="relative">
-            <h2 className="text-[24px] sm:text-[32px] md:text-[36px] font-bold text-white tracking-tight mb-4">
+            <h2 className="text-[22px] sm:text-[32px] md:text-[36px] font-bold text-white tracking-tight mb-4">
               Pret a automatiser votre business ?
             </h2>
-            <p className="text-gray-400 text-lg mb-8 max-w-[440px] mx-auto">
+            <p className="text-gray-400 text-base sm:text-lg mb-8 max-w-[440px] mx-auto">
               Rejoignez les entreprises qui utilisent InfinixLoop pour gagner du temps et scaler plus vite.
             </p>
             <div className="flex items-center justify-center gap-4 max-sm:flex-col">
@@ -272,8 +388,8 @@ export default function LandingPage() {
       </section>
 
       {/* ─── FOOTER ─── */}
-      <footer className="border-t border-gray-200 py-8 sm:py-12 px-4 sm:px-6">
-        <div className="max-w-[1200px] mx-auto flex items-center justify-between max-md:flex-col max-md:gap-4">
+      <footer ref={footerRef} className="reveal border-t border-gray-200 py-8 sm:py-12 px-5 sm:px-6">
+        <div className="max-w-[1200px] mx-auto flex items-center justify-between max-md:flex-col max-md:gap-4 max-md:text-center">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-md bg-gray-950 flex items-center justify-center">
               <InfinixLoopLogo size={16} />
