@@ -155,27 +155,70 @@ body {
 .stagger-children.visible > * { opacity: 0; transform: translateY(24px); }
 .stagger-children.visible > * { opacity: 1; transform: translateY(0); }
 
-/* ─── Carousel ─── */
-.carousel-viewport {
-  overflow: hidden;
+/* ─── 3D Carousel ─── */
+.carousel-3d-container {
   position: relative;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 50px;
+  perspective: 1200px;
+  overflow: hidden;
 }
-.carousel-track-inner {
-  display: flex;
-  transition: transform 0.5s cubic-bezier(.16,1,.3,1);
-  will-change: transform;
-}
-.carousel-track-inner > * {
-  flex-shrink: 0;
-}
-.carousel-dot-bar {
+.carousel-3d-track {
   display: flex;
   justify-content: center;
-  gap: 8px;
-  margin-top: 20px;
+  align-items: center;
+  min-height: 320px;
+  position: relative;
+  transform-style: preserve-3d;
 }
-.carousel-dot-item {
-  width: 8px; height: 8px;
+.carousel-3d-card {
+  position: absolute;
+  width: 280px;
+  border-radius: 20px;
+  overflow: hidden;
+  transition: all 0.7s cubic-bezier(0.25, 0.1, 0.25, 1);
+  cursor: pointer;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+  border: 2px solid #e4e4e7;
+  background: white;
+}
+.carousel-3d-card:hover { border-color: #d1d1d6; }
+.carousel-3d-card.active {
+  border-color: #e11d48;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.12), 0 0 30px rgba(225,29,72,0.08);
+}
+
+.carousel-3d-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: white;
+  border: 1px solid #e4e4e7;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+  transition: all 0.3s;
+}
+.carousel-3d-btn:hover {
+  border-color: #e11d48;
+  box-shadow: 0 6px 20px rgba(225,29,72,0.12);
+}
+.carousel-3d-btn.prev { left: 0; }
+.carousel-3d-btn.next { right: 0; }
+
+.carousel-3d-dots {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
+}
+.carousel-3d-dot {
+  width: 10px; height: 10px;
   border-radius: 50%;
   background: #d1d1d6;
   border: none;
@@ -183,35 +226,21 @@ body {
   transition: all 0.3s ease;
   padding: 0;
 }
-.carousel-dot-item.active {
-  width: 28px;
-  border-radius: 4px;
+.carousel-3d-dot.active {
+  width: 32px;
+  border-radius: 5px;
   background: #e11d48;
 }
-.carousel-nav-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 40px; height: 40px;
-  border-radius: 50%;
-  background: white;
-  border: 1px solid #e4e4e7;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  z-index: 10;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  transition: all 0.2s;
-}
-.carousel-nav-btn:hover {
-  border-color: #a1a1aa;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-}
-.carousel-nav-btn.prev { left: -8px; }
-.carousel-nav-btn.next { right: -8px; }
 
-@media (min-width: 768px) {
-  .carousel-nav-btn.prev { left: -20px; }
-  .carousel-nav-btn.next { right: -20px; }
+@media (max-width: 640px) {
+  .carousel-3d-container { padding: 0 40px; }
+  .carousel-3d-card { width: 240px; }
+  .carousel-3d-track { min-height: 300px; }
+  .carousel-3d-btn { width: 36px; height: 36px; }
+}
+@media (max-width: 400px) {
+  .carousel-3d-container { padding: 0 32px; }
+  .carousel-3d-card { width: 220px; }
 }
 
 /* Badge dot */
@@ -238,7 +267,11 @@ body {
   background-clip: text;
 }
 
-/* Section padding */
+/* Section padding — only top/bottom so px-* utilities work */
 .section-padding {
-  padding: 100px 0;
+  padding-top: 80px;
+  padding-bottom: 80px;
+}
+@media (min-width: 640px) {
+  .section-padding { padding-top: 100px; padding-bottom: 100px; }
 }

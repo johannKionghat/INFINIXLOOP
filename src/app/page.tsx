@@ -61,72 +61,84 @@ function useReveal() {
   return ref;
 }
 
-/* ─── CAROUSEL COMPONENT ─── */
-function Carousel({ children, itemWidth = 280, gap = 16 }: { children: React.ReactNode[]; itemWidth?: number; gap?: number }) {
-  const [index, setIndex] = useState(0);
-  const [containerW, setContainerW] = useState(0);
-  const viewportRef = useRef<HTMLDivElement>(null);
+/* ─── 3D CAROUSEL COMPONENT ─── */
+function Carousel3D({ children }: { children: React.ReactNode[] }) {
+  const [current, setCurrent] = useState(0);
   const autoRef = useRef<NodeJS.Timeout | null>(null);
+  const [animating, setAnimating] = useState(false);
   const total = children.length;
 
-  useEffect(() => {
-    const measure = () => { if (viewportRef.current) setContainerW(viewportRef.current.offsetWidth); };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
+  const go = useCallback((idx: number) => {
+    if (animating) return;
+    setAnimating(true);
+    setCurrent(idx);
+    setTimeout(() => setAnimating(false), 500);
+  }, [animating]);
 
-  const visibleCount = Math.max(1, Math.floor((containerW + gap) / (itemWidth + gap)));
-  const maxIndex = Math.max(0, total - visibleCount);
-
-  const go = useCallback((dir: number) => {
-    setIndex((prev) => Math.max(0, Math.min(maxIndex, prev + dir)));
-  }, [maxIndex]);
+  const next = useCallback(() => go((current + 1) % total), [go, current, total]);
+  const prev = useCallback(() => go((current - 1 + total) % total), [go, current, total]);
 
   // Auto-play
   useEffect(() => {
     autoRef.current = setInterval(() => {
-      setIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+      setCurrent((prev) => (prev + 1) % total);
     }, 4000);
     return () => { if (autoRef.current) clearInterval(autoRef.current); };
-  }, [maxIndex]);
+  }, [total]);
 
   const pause = () => { if (autoRef.current) clearInterval(autoRef.current); };
   const resume = () => {
     pause();
     autoRef.current = setInterval(() => {
-      setIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+      setCurrent((prev) => (prev + 1) % total);
     }, 4000);
   };
 
-  const offset = -(index * (itemWidth + gap));
+  const getCardStyle = (i: number): React.CSSProperties => {
+    let diff = i - current;
+    if (diff > total / 2) diff -= total;
+    if (diff < -total / 2) diff += total;
+    const absDiff = Math.abs(diff);
+    const isActive = diff === 0;
+    const translateX = diff * 260;
+    const translateZ = isActive ? 60 : -Math.abs(diff) * 60;
+    const rotateY = diff * -10;
+    const scale = isActive ? 1 : Math.max(0.75, 0.9 - absDiff * 0.1);
+    const opacity = absDiff > 2 ? 0 : absDiff > 1 ? 0.3 : 1;
+    const zIndex = 100 - absDiff * 10;
+    return {
+      transform: `translateX(${translateX}px) translateZ(${translateZ}px) rotateY(${rotateY}deg) scale(${scale})`,
+      opacity,
+      zIndex,
+      pointerEvents: absDiff > 1 ? "none" : "auto",
+    };
+  };
 
   return (
-    <div className="relative" onMouseEnter={pause} onMouseLeave={resume}>
-      <div ref={viewportRef} className="carousel-viewport">
-        <div className="carousel-track-inner" style={{ transform: `translateX(${offset}px)`, gap: `${gap}px` }}>
-          {children.map((child, i) => (
-            <div key={i} style={{ width: itemWidth, flexShrink: 0 }}>{child}</div>
-          ))}
-        </div>
-        {index > 0 && (
-          <button className="carousel-nav-btn prev" onClick={() => go(-1)} aria-label="Precedent">
-            <ChevronLeft className="w-5 h-5 text-gray-600" />
-          </button>
-        )}
-        {index < maxIndex && (
-          <button className="carousel-nav-btn next" onClick={() => go(1)} aria-label="Suivant">
-            <ChevronRight className="w-5 h-5 text-gray-600" />
-          </button>
-        )}
+    <div className="carousel-3d-container" onMouseEnter={pause} onMouseLeave={resume} onTouchStart={pause} onTouchEnd={resume}>
+      <button className="carousel-3d-btn prev" onClick={prev} aria-label="Precedent">
+        <ChevronLeft className="w-5 h-5 text-gray-600" />
+      </button>
+      <div className="carousel-3d-track">
+        {children.map((child, i) => (
+          <div
+            key={i}
+            className={`carousel-3d-card${i === current ? " active" : ""}`}
+            style={getCardStyle(i)}
+            onClick={() => go(i)}
+          >
+            {child}
+          </div>
+        ))}
       </div>
-      {total > visibleCount && (
-        <div className="carousel-dot-bar">
-          {Array.from({ length: maxIndex + 1 }).map((_, i) => (
-            <button key={i} className={`carousel-dot-item${i === index ? " active" : ""}`} onClick={() => setIndex(i)} aria-label={`Slide ${i + 1}`} />
-          ))}
-        </div>
-      )}
+      <button className="carousel-3d-btn next" onClick={next} aria-label="Suivant">
+        <ChevronRight className="w-5 h-5 text-gray-600" />
+      </button>
+      <div className="carousel-3d-dots">
+        {children.map((_, i) => (
+          <button key={i} className={`carousel-3d-dot${i === current ? " active" : ""}`} onClick={() => go(i)} aria-label={`Slide ${i + 1}`} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -213,7 +225,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ─── HERO ─── */}
-      <section className="pt-28 sm:pt-40 pb-16 sm:pb-24 px-5 sm:px-6 relative overflow-hidden">
+      <section className="pt-28 sm:pt-40 pb-16 sm:pb-24 px-6 sm:px-8 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-white" />
         <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-accent/5 rounded-full blur-[120px]" />
 
@@ -266,7 +278,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── AGENTS ─── */}
-      <section id="agents" className="section-padding px-5 sm:px-6">
+      <section id="agents" className="section-padding px-6 sm:px-8">
         <div className="max-w-[1200px] mx-auto">
           <div ref={agentsHeaderRef} className="reveal text-center mb-12 sm:mb-16">
             <p className="text-sm font-semibold text-accent uppercase tracking-wider mb-3">Nos agents</p>
@@ -285,19 +297,19 @@ export default function LandingPage() {
             ))}
           </div>
 
-          {/* Mobile carousel */}
+          {/* Mobile 3D carousel */}
           <div className="md:hidden">
-            <Carousel itemWidth={260} gap={14}>
+            <Carousel3D>
               {AGENTS.map((agent) => (
                 <AgentCard key={agent.name} agent={agent} />
               ))}
-            </Carousel>
+            </Carousel3D>
           </div>
         </div>
       </section>
 
       {/* ─── HOW IT WORKS ─── */}
-      <section id="how" className="section-padding px-5 sm:px-6 bg-gray-50">
+      <section id="how" className="section-padding px-6 sm:px-8 bg-gray-50">
         <div className="max-w-[1200px] mx-auto">
           <div ref={stepsHeaderRef} className="reveal text-center mb-12 sm:mb-16">
             <p className="text-sm font-semibold text-accent uppercase tracking-wider mb-3">Comment ca marche</p>
@@ -322,7 +334,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── FEATURES ─── */}
-      <section id="features" className="section-padding px-5 sm:px-6">
+      <section id="features" className="section-padding px-6 sm:px-8">
         <div className="max-w-[1200px] mx-auto">
           <div ref={featHeaderRef} className="reveal text-center mb-12 sm:mb-16">
             <p className="text-sm font-semibold text-accent uppercase tracking-wider mb-3">Avantages</p>
@@ -338,19 +350,19 @@ export default function LandingPage() {
             ))}
           </div>
 
-          {/* Mobile carousel */}
+          {/* Mobile 3D carousel */}
           <div className="md:hidden">
-            <Carousel itemWidth={300} gap={14}>
+            <Carousel3D>
               {FEATURES.map((f) => (
                 <FeatureCard key={f.title} f={f} />
               ))}
-            </Carousel>
+            </Carousel3D>
           </div>
         </div>
       </section>
 
       {/* ─── CTA ─── */}
-      <section className="section-padding px-5 sm:px-6">
+      <section className="section-padding px-6 sm:px-8">
         <div ref={ctaRef} className="reveal-scale max-w-[800px] mx-auto text-center bg-gray-950 rounded-3xl px-6 py-10 sm:px-12 sm:py-16 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-accent/10 rounded-full blur-[80px]" />
           <div className="absolute bottom-0 left-0 w-[200px] h-[200px] bg-accent/5 rounded-full blur-[60px]" />
@@ -388,7 +400,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── FOOTER ─── */}
-      <footer ref={footerRef} className="reveal border-t border-gray-200 py-8 sm:py-12 px-5 sm:px-6">
+      <footer ref={footerRef} className="reveal border-t border-gray-200 py-8 sm:py-12 px-6 sm:px-8">
         <div className="max-w-[1200px] mx-auto flex items-center justify-between max-md:flex-col max-md:gap-4 max-md:text-center">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-md bg-gray-950 flex items-center justify-center">
