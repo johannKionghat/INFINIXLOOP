@@ -17,7 +17,14 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<{ error?: string }>;
   signup: (email: string, password: string, name: string) => Promise<{ error?: string; needsConfirmation?: boolean }>;
+  resetPassword: (email: string) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
+}
+
+function getSiteUrl() {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+  if (typeof window !== "undefined") return window.location.origin;
+  return "http://localhost:3000";
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -25,6 +32,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   login: async () => ({}),
   signup: async () => ({}),
+  resetPassword: async () => ({}),
   logout: async () => {},
 });
 
@@ -71,19 +79,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
       options: {
         data: { full_name: name },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${getSiteUrl()}/auth/callback`,
       },
     });
     if (error) return { error: error.message };
-    // If user is auto-confirmed (no email confirmation required), session exists
     if (data.session) {
       return {};
     }
-    // If identities is empty, user already exists
     if (data.user && data.user.identities && data.user.identities.length === 0) {
       return { error: "Un compte existe deja avec cet email" };
     }
     return { needsConfirmation: true };
+  };
+
+  const resetPassword = async (email: string): Promise<{ error?: string }> => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${getSiteUrl()}/auth/callback?next=/reset-password`,
+    });
+    if (error) return { error: error.message };
+    return {};
   };
 
   const logout = async () => {
@@ -92,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, resetPassword, logout }}>
       {children}
     </AuthContext.Provider>
   );
