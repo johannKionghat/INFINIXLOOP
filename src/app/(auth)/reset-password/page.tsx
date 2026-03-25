@@ -1,20 +1,56 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { InfinixLoopLogo } from "@/components/logo";
-import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, CheckCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle, AlertTriangle } from "lucide-react";
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="animate-pulse text-sm text-gray-400">Chargement...</div>
+      </div>
+    }>
+      <ResetPasswordInner />
+    </Suspense>
+  );
+}
+
+function ResetPasswordInner() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token");
+
+  if (!token) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white px-6">
+        <div className="w-full max-w-[400px] text-center">
+          <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center mb-6 mx-auto">
+            <AlertTriangle className="w-7 h-7 text-red-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-950 tracking-tight mb-3">
+            Lien invalide
+          </h1>
+          <p className="text-sm text-gray-500 mb-8">
+            Ce lien de reinitialisation est invalide ou a expire.
+          </p>
+          <Link
+            href="/forgot-password"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-gray-950 text-white hover:bg-gray-800 transition-all no-underline"
+          >
+            Refaire une demande
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,12 +67,17 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) {
-        setError(error.message);
+      const res = await fetch("/api/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Une erreur est survenue");
       } else {
         setDone(true);
-        setTimeout(() => router.push("/overview"), 3000);
+        setTimeout(() => router.push("/login"), 3000);
       }
     } catch {
       setError("Une erreur est survenue");
@@ -56,13 +97,13 @@ export default function ResetPasswordPage() {
             Mot de passe modifie
           </h1>
           <p className="text-sm text-gray-500 mb-8">
-            Votre mot de passe a ete mis a jour avec succes. Vous allez etre redirige automatiquement...
+            Votre mot de passe a ete mis a jour avec succes. Vous allez etre redirige vers la page de connexion...
           </p>
           <Link
-            href="/overview"
+            href="/login"
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-gray-950 text-white hover:bg-gray-800 transition-all no-underline"
           >
-            Aller au dashboard
+            Se connecter
           </Link>
         </div>
       </div>

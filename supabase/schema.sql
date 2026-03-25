@@ -132,6 +132,19 @@ alter table public.user_api_keys enable row level security;
 create policy "Users can CRUD own api keys" on public.user_api_keys
   for all using (auth.uid() = user_id);
 
+-- Password reset tokens
+create table if not exists public.password_resets (
+  id uuid default gen_random_uuid() primary key,
+  email text not null,
+  token text not null unique,
+  expires_at timestamptz not null,
+  used boolean default false,
+  created_at timestamptz default now()
+);
+
+alter table public.password_resets enable row level security;
+-- No RLS policies — only accessed via service role from API routes
+
 -- Indexes
 create index if not exists idx_conversations_user on public.conversations(user_id);
 create index if not exists idx_messages_conversation on public.messages(conversation_id);
@@ -139,3 +152,5 @@ create index if not exists idx_outputs_user on public.outputs(user_id);
 create index if not exists idx_outputs_type on public.outputs(type);
 create index if not exists idx_analytics_user on public.analytics_events(user_id);
 create index if not exists idx_analytics_agent on public.analytics_events(agent_id);
+create index if not exists idx_password_resets_token on public.password_resets(token);
+create index if not exists idx_password_resets_email on public.password_resets(email);

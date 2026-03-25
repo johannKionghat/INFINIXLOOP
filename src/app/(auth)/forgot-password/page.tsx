@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { InfinixLoopLogo } from "@/components/logo";
-import { useAuth } from "@/lib/auth-context";
 import { ArrowLeft, Mail } from "lucide-react";
 
 export default function ForgotPasswordPage() {
@@ -11,7 +10,6 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-  const { resetPassword } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,9 +17,14 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const result = await resetPassword(email);
-      if (result.error) {
-        setError(result.error);
+      const res = await fetch("/api/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Une erreur est survenue");
       } else {
         setSent(true);
       }
