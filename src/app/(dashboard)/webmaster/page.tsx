@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Globe, Play, RotateCcw, ChevronDown, ChevronRight, Settings, Share2, FileText, Layers, Palette, Database, ImageIcon } from "lucide-react";
+import { Globe, Play, RotateCcw, ChevronDown, ChevronRight, Settings, Share2, FileText, Layers, Palette, Database, ImageIcon, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExecutionStepsView } from "@/components/execution-steps";
 import {
@@ -14,6 +14,7 @@ import type { ExecutionStep, WebmasterConfig, WebmasterContext } from "@/agents/
 import type { ConfigFormField } from "@/agents/webmaster/config";
 
 const SECTION_ICONS: Record<string, React.ElementType> = {
+  Brain,
   Layers,
   Database,
   FileText,
@@ -49,7 +50,7 @@ export default function WebmasterPage() {
   const [steps, setSteps] = useState<ExecutionStep[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [context, setContext] = useState<WebmasterContext | null>(null);
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({ mode: true, source: true, style: true, platforms: true });
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({ model: true, mode: true, source: true, style: true, platforms: true });
   const stepsRef = useRef<HTMLDivElement>(null);
 
   const updateConfig = useCallback((key: keyof WebmasterConfig, value: unknown) => {
@@ -93,10 +94,11 @@ export default function WebmasterPage() {
   const shouldShowField = (field: ConfigFormField): boolean => {
     if (!field.showWhen) return true;
     const currentValue = config[field.showWhen.field];
+    const strValue = String(currentValue);
     if (Array.isArray(field.showWhen.value)) {
-      return field.showWhen.value.includes(String(currentValue));
+      return field.showWhen.value.includes(strValue);
     }
-    return String(currentValue) === field.showWhen.value;
+    return strValue === field.showWhen.value;
   };
 
   const visibleSections = CONFIG_SECTIONS.filter((section) => {

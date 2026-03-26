@@ -11,6 +11,13 @@ export interface WebmasterConfig {
   sourceMode: SourceMode;
   imageSource: ImageSource;
 
+  // Model configuration
+  globalModel: string;
+  usePerStepModels: boolean;
+  modelAnalysis: string;
+  modelGeneration: string;
+  modelQuality: string;
+
   // Scraping
   scrapingUrl: string;
 

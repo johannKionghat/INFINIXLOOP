@@ -1,4 +1,5 @@
 import type { WebmasterConfig } from "./types";
+import { AI_MODELS } from "@/lib/ai";
 
 export interface ConfigFormField {
   key: keyof WebmasterConfig;
@@ -12,7 +13,13 @@ export interface ConfigFormField {
   showWhen?: { field: keyof WebmasterConfig; value: string | string[] };
 }
 
+const MODEL_OPTIONS = AI_MODELS.map((m) => ({
+  value: m.id,
+  label: `${m.label} — ${m.provider}${m.tier === "free" ? " (gratuit)" : ""}`,
+}));
+
 export const CONFIG_SECTIONS = [
+  { id: "model", label: "Modele IA", icon: "Brain" },
   { id: "mode", label: "Mode de publication", icon: "Layers" },
   { id: "source", label: "Source du contenu", icon: "Database" },
   { id: "thematic", label: "Configuration thematique", icon: "FileText" },
@@ -24,6 +31,55 @@ export const CONFIG_SECTIONS = [
 ] as const;
 
 export const CONFIG_FORM_FIELDS: ConfigFormField[] = [
+  // === MODEL ===
+  {
+    key: "globalModel",
+    label: "Modele global",
+    type: "select",
+    section: "model",
+    options: MODEL_OPTIONS,
+    defaultValue: "llama-3.3-70b-versatile",
+    description: "Modele IA utilise pour toutes les etapes. Groq est gratuit.",
+  },
+  {
+    key: "usePerStepModels",
+    label: "Configurer un modele par etape",
+    type: "toggle",
+    section: "model",
+    defaultValue: false,
+    description: "Permet d'utiliser un modele different pour l'analyse, la generation et la qualite.",
+  },
+  {
+    key: "modelAnalysis",
+    label: "Modele — Analyse & Strategie",
+    type: "select",
+    section: "model",
+    options: MODEL_OPTIONS,
+    defaultValue: "llama-3.3-70b-versatile",
+    description: "Module 1 : analyse produit, tendances, strategie editoriale.",
+    showWhen: { field: "usePerStepModels", value: "true" },
+  },
+  {
+    key: "modelGeneration",
+    label: "Modele — Generation de contenu",
+    type: "select",
+    section: "model",
+    options: MODEL_OPTIONS,
+    defaultValue: "llama-3.3-70b-versatile",
+    description: "Module 2 : redaction des posts pour chaque plateforme.",
+    showWhen: { field: "usePerStepModels", value: "true" },
+  },
+  {
+    key: "modelQuality",
+    label: "Modele — Controle qualite",
+    type: "select",
+    section: "model",
+    options: MODEL_OPTIONS,
+    defaultValue: "llama-3.3-70b-versatile",
+    description: "Module 3 : scoring et raffinement des posts.",
+    showWhen: { field: "usePerStepModels", value: "true" },
+  },
+
   // === MODE ===
   {
     key: "publicationMode",
