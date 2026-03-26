@@ -24,6 +24,46 @@ export async function aiChat(options: AIChatOptions): Promise<string> {
   return data.content;
 }
 
+/**
+ * Call aiChat and parse the JSON response. If parsing fails, auto-retry once
+ * by sending the raw response back to the LLM with a "fix your JSON" prompt.
+ */
+export async function aiChatJSON<T>(options: AIChatOptions): Promise<T> {
+  const raw = await aiChat(options);
+
+  // First try: parse directly
+  try {
+    return parseJSON<T>(raw);
+  } catch (firstError) {
+    // Auto-retry: ask the LLM to fix its own JSON
+    console.warn("[aiChatJSON] Parse failed, retrying with fix prompt. Error:", firstError);
+    try {
+      const fixRaw = await aiChat({
+        model: options.model,
+        messages: [
+          {
+            role: "system",
+            content: "Tu es un correcteur JSON. L'utilisateur te donne une reponse JSON invalide. Corrige-la et renvoie UNIQUEMENT le JSON valide corrige. Aucun texte avant ou apres. Aucun bloc markdown. Juste le JSON brut.",
+          },
+          {
+            role: "user",
+            content: `Cette reponse JSON est invalide. Corrige-la et renvoie UNIQUEMENT le JSON valide :\n\n${raw}`,
+          },
+        ],
+        temperature: 0,
+        max_tokens: options.max_tokens || 4096,
+      });
+      return parseJSON<T>(fixRaw);
+    } catch {
+      // Both attempts failed — throw with full raw response for debugging
+      const preview = raw.length > 800 ? raw.slice(0, 800) + `\n\n... [TRONQUE — ${raw.length} chars total]` : raw;
+      throw new Error(`JSON invalide apres retry. Reponse LLM complete :\n${preview}`);
+    }
+  }
+}
+
+// ── JSON Parser (multi-attempt) ─────────────────────────────────────────────
+
 export function parseJSON<T>(raw: string): T {
   // Extract JSON from markdown code blocks if present
   const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -46,50 +86,33 @@ export function parseJSON<T>(raw: string): T {
     return JSON.parse(jsonStr);
   } catch { /* continue */ }
 
-  // Attempt 2: escape unescaped newlines/tabs/returns inside JSON string values
+  // Attempt 2: fix unescaped chars inside string values (char-by-char walk)
   try {
-    const cleaned = jsonStr.replace(
-      /"(?:[^"\\]|\\.)*"/g,
-      (m) => m
-        .replace(/\n/g, "\\n")
-        .replace(/\r/g, "\\r")
-        .replace(/\t/g, "\\t"),
-    );
-    return JSON.parse(cleaned);
-  } catch { /* continue */ }
-
-  // Attempt 3: aggressive cleanup — fix common LLM JSON errors
-  try {
-    let fixed = jsonStr;
-    // Remove trailing commas before } or ]
+    let fixed = fixJsonStrings(jsonStr);
     fixed = fixed.replace(/,\s*([}\]])/g, "$1");
-    // Fix unescaped newlines inside strings (process char by char)
-    fixed = fixJsonStrings(fixed);
     return JSON.parse(fixed);
   } catch { /* continue */ }
 
-  // Attempt 4: extract just the JSON object between first { and last }
+  // Attempt 3: extract between first { and last }, then fix
   try {
     const start = jsonStr.indexOf("{");
     const end = jsonStr.lastIndexOf("}");
     if (start !== -1 && end > start) {
       let sub = jsonStr.slice(start, end + 1);
-      sub = sub.replace(/,\s*([}\]])/g, "$1");
       sub = fixJsonStrings(sub);
+      sub = sub.replace(/,\s*([}\]])/g, "$1");
       return JSON.parse(sub);
     }
   } catch { /* continue */ }
 
-  // All attempts failed — throw with context
-  throw new Error(
-    `Impossible de parser le JSON du LLM. Debut de la reponse: "${jsonStr.slice(0, 200)}..."`,
-  );
+  // All attempts failed
+  throw new Error(`JSON parse error. Raw (${jsonStr.length} chars): ${jsonStr.slice(0, 500)}`);
 }
 
 /**
- * Walk through a JSON string and escape unescaped special chars inside string values.
- * Handles the common LLM issue of putting literal newlines, tabs, or unescaped quotes
- * inside JSON string values.
+ * Walk through a JSON string char-by-char and escape unescaped special chars
+ * inside string values. Handles literal newlines, tabs, carriage returns,
+ * and other common LLM JSON issues.
  */
 function fixJsonStrings(json: string): string {
   const result: string[] = [];
@@ -118,7 +141,6 @@ function fixJsonStrings(json: string): string {
     }
 
     if (inString) {
-      // Escape chars that are invalid inside JSON strings
       if (ch === "\n") { result.push("\\n"); continue; }
       if (ch === "\r") { result.push("\\r"); continue; }
       if (ch === "\t") { result.push("\\t"); continue; }

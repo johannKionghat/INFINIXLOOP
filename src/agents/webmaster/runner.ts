@@ -9,7 +9,7 @@ import type {
   QualityReport,
 } from "./types";
 import { buildExecutionSteps, getActivePlatforms } from "./steps";
-import { aiChat, parseJSON } from "@/lib/ai";
+import { aiChatJSON } from "@/lib/ai";
 import {
   buildScrapingAnalysisPrompt,
   buildThematicAnalysisPrompt,
@@ -248,8 +248,7 @@ export async function runWebmasterAgent(
         { role: "system" as const, content: "Tu es un expert en marketing digital. Reponds UNIQUEMENT en JSON valide." },
         { role: "user" as const, content: prompt },
       ];
-      const raw = await aiChat({ model: analysisModel, messages, temperature: 0.3 });
-      const parsed = parseJSON<Omit<ProductAnalysis, "source">>(raw);
+      const parsed = await aiChatJSON<Omit<ProductAnalysis, "source">>({ model: analysisModel, messages, temperature: 0.3, max_tokens: 2000 });
       ctx.productAnalysis = { ...parsed, resources: parsed.resources || [], source: "SCRAPING" };
       return {
         output: `Analyse terminee : ${ctx.productAnalysis.productName}`,
@@ -333,7 +332,7 @@ export async function runWebmasterAgent(
     // Thematic analysis via AI
     await runStep(steps, "step-analyze-thematic", onUpdate, async () => {
       const prompt = buildThematicAnalysisPrompt(config, searchText, searchExtraText);
-      const raw = await aiChat({
+      const parsed = await aiChatJSON<Omit<ProductAnalysis, "source">>({
         model: analysisModel,
         messages: [
           { role: "system", content: "Tu es un curateur de contenu expert. Reponds UNIQUEMENT en JSON valide." },
@@ -342,7 +341,6 @@ export async function runWebmasterAgent(
         temperature: 0.4,
         max_tokens: 4000,
       });
-      const parsed = parseJSON<Omit<ProductAnalysis, "source">>(raw);
       ctx.productAnalysis = { ...parsed, resources: parsed.resources || [], source: "THEMATIC" };
       return {
         output: `Briefing complet genere pour "${ctx.productAnalysis.productName}"`,
@@ -356,7 +354,7 @@ export async function runWebmasterAgent(
   // ── MODULE 1 : Trends ──────────────────────────────────────────────────
   await runStep(steps, "step-trends", onUpdate, async () => {
     const prompt = buildTrendsPrompt(ctx.productAnalysis!);
-    const raw = await aiChat({
+    ctx.sectorTrends = await aiChatJSON<SectorTrends>({
       model: analysisModel,
       messages: [
         { role: "system", content: "Tu es un analyste de tendances. Reponds UNIQUEMENT en JSON valide." },
@@ -365,7 +363,6 @@ export async function runWebmasterAgent(
       temperature: 0.8,
       max_tokens: 1200,
     });
-    ctx.sectorTrends = parseJSON<SectorTrends>(raw);
     return {
       output: `${ctx.sectorTrends.trends.length} tendances identifiees.`,
       detail: `Top: ${ctx.sectorTrends.topTrend}`,
@@ -377,7 +374,7 @@ export async function runWebmasterAgent(
   // ── MODULE 1 : Strategy ────────────────────────────────────────────────
   await runStep(steps, "step-strategy", onUpdate, async () => {
     const prompt = buildStrategyPrompt(config, ctx.productAnalysis!, ctx.sectorTrends!);
-    const raw = await aiChat({
+    ctx.contentStrategy = await aiChatJSON<ContentStrategy>({
       model: analysisModel,
       messages: [
         { role: "system", content: "Tu es un directeur editorial. Reponds UNIQUEMENT en JSON valide." },
@@ -386,7 +383,6 @@ export async function runWebmasterAgent(
       temperature: 0.5,
       max_tokens: 1000,
     });
-    ctx.contentStrategy = parseJSON<ContentStrategy>(raw);
     return {
       output: `Strategie definie : ${ctx.contentStrategy.postType} / ${ctx.contentStrategy.tone}`,
       detail: `Hook: "${ctx.contentStrategy.openingLine?.slice(0, 80)}..."`,
@@ -431,7 +427,7 @@ export async function runWebmasterAgent(
     }, onUpdate);
 
     try {
-      const raw = await aiChat({
+      const parsed = await aiChatJSON<Record<string, unknown>>({
         model: generationModel,
         messages: [
           { role: "system", content: `Tu es un copywriter senior specialise ${platform.label}. Reponds UNIQUEMENT en JSON valide. Les posts doivent etre COMPLETS et PRETS A PUBLIER.` },
@@ -440,8 +436,6 @@ export async function runWebmasterAgent(
         temperature: temp,
         max_tokens: maxTokens,
       });
-
-      const parsed = parseJSON<Record<string, unknown>>(raw);
       (ctx.posts as Record<string, unknown>)[platform.id] = parsed;
 
       const content = (parsed.content || parsed.caption || parsed.fullCaption || "") as string;
@@ -544,7 +538,7 @@ export async function runWebmasterAgent(
     }, onUpdate);
 
     try {
-      const qualityRaw = await aiChat({
+      ctx.qualityReport = await aiChatJSON<QualityReport>({
         model: qualityModel,
         messages: [
           { role: "system", content: "Tu es un editeur qualite senior. Reponds UNIQUEMENT en JSON valide." },
@@ -552,7 +546,6 @@ export async function runWebmasterAgent(
         ],
         temperature: 0.3,
       });
-      ctx.qualityReport = parseJSON<QualityReport>(qualityRaw);
 
       updateSubStep(steps, "step-quality", "sub-quality-score", {
         status: "done",
