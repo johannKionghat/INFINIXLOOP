@@ -29,20 +29,105 @@ export function parseJSON<T>(raw: string): T {
   const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   let jsonStr = match ? match[1].trim() : raw.trim();
 
-  // Remove bad control characters that LLMs sometimes produce (tabs/newlines inside JSON strings)
-  // Replace literal control chars (0x00-0x1F except \n \r \t) that break JSON.parse
+  // If the string doesn't start with { or [, try to find the first JSON object
+  if (!jsonStr.startsWith("{") && !jsonStr.startsWith("[")) {
+    const firstBrace = jsonStr.indexOf("{");
+    const lastBrace = jsonStr.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+    }
+  }
+
+  // Remove bad control characters (0x00-0x1F except \n \r \t)
   jsonStr = jsonStr.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 
+  // Attempt 1: direct parse
   try {
     return JSON.parse(jsonStr);
-  } catch {
-    // Second attempt: escape unescaped newlines/tabs inside JSON string values
+  } catch { /* continue */ }
+
+  // Attempt 2: escape unescaped newlines/tabs/returns inside JSON string values
+  try {
     const cleaned = jsonStr.replace(
       /"(?:[^"\\]|\\.)*"/g,
-      (match) => match.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t"),
+      (m) => m
+        .replace(/\n/g, "\\n")
+        .replace(/\r/g, "\\r")
+        .replace(/\t/g, "\\t"),
     );
     return JSON.parse(cleaned);
+  } catch { /* continue */ }
+
+  // Attempt 3: aggressive cleanup — fix common LLM JSON errors
+  try {
+    let fixed = jsonStr;
+    // Remove trailing commas before } or ]
+    fixed = fixed.replace(/,\s*([}\]])/g, "$1");
+    // Fix unescaped newlines inside strings (process char by char)
+    fixed = fixJsonStrings(fixed);
+    return JSON.parse(fixed);
+  } catch { /* continue */ }
+
+  // Attempt 4: extract just the JSON object between first { and last }
+  try {
+    const start = jsonStr.indexOf("{");
+    const end = jsonStr.lastIndexOf("}");
+    if (start !== -1 && end > start) {
+      let sub = jsonStr.slice(start, end + 1);
+      sub = sub.replace(/,\s*([}\]])/g, "$1");
+      sub = fixJsonStrings(sub);
+      return JSON.parse(sub);
+    }
+  } catch { /* continue */ }
+
+  // All attempts failed — throw with context
+  throw new Error(
+    `Impossible de parser le JSON du LLM. Debut de la reponse: "${jsonStr.slice(0, 200)}..."`,
+  );
+}
+
+/**
+ * Walk through a JSON string and escape unescaped special chars inside string values.
+ * Handles the common LLM issue of putting literal newlines, tabs, or unescaped quotes
+ * inside JSON string values.
+ */
+function fixJsonStrings(json: string): string {
+  const result: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < json.length; i++) {
+    const ch = json[i];
+
+    if (escaped) {
+      result.push(ch);
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      result.push(ch);
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      result.push(ch);
+      continue;
+    }
+
+    if (inString) {
+      // Escape chars that are invalid inside JSON strings
+      if (ch === "\n") { result.push("\\n"); continue; }
+      if (ch === "\r") { result.push("\\r"); continue; }
+      if (ch === "\t") { result.push("\\t"); continue; }
+    }
+
+    result.push(ch);
   }
+
+  return result.join("");
 }
 
 // ── Model registry ──────────────────────────────────────────────────────────
