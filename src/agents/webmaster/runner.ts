@@ -637,13 +637,104 @@ export async function runWebmasterAgent(
         }, onUpdate);
         publishedPlatforms.push(platformName);
       } else {
-        updateSubStep(steps, "step-publish", sub.id, {
-          status: "done",
-          output: "Integration API en attente",
-          detail: "Configurez les cles API de la plateforme pour activer la publication automatique",
-          rawOutput: { status: "pending_api_integration", platform: platformName },
-        }, onUpdate);
-        publishedPlatforms.push(platformName);
+        // Map platform display name to API platform id
+        const platformApiMap: Record<string, string> = {
+          linkedin: "linkedin",
+          "twitter": "twitter",
+          "x": "twitter",
+          facebook: "facebook",
+          slack: "slack",
+        };
+        const apiPlatform = platformApiMap[platformKey] || platformKey;
+
+        // Only publish to platforms supported by the publish API
+        const supportedPlatforms = ["linkedin", "twitter", "facebook", "slack"];
+        if (!supportedPlatforms.includes(apiPlatform)) {
+          updateSubStep(steps, "step-publish", sub.id, {
+            status: "skipped",
+            output: `Publication automatique non disponible pour ${platformName}`,
+            detail: "Utilisez le contenu genere pour publier manuellement",
+            rawOutput: { status: "manual_only", platform: platformName },
+          }, onUpdate);
+          publishedPlatforms.push(platformName);
+          continue;
+        }
+
+        // Build publish payload from generated content
+        const publishPayload: Record<string, unknown> = {
+          platform: apiPlatform,
+          content: "",
+        };
+
+        if (apiPlatform === "linkedin" && ctx.posts?.linkedin) {
+          publishPayload.content = ctx.posts.linkedin.content;
+          publishPayload.hashtags = ctx.posts.linkedin.hashtags;
+          if (config.uploadedImageUrl) publishPayload.imageUrl = config.uploadedImageUrl;
+        } else if (apiPlatform === "twitter" && ctx.posts?.twitter) {
+          publishPayload.content = ctx.posts.twitter.content;
+          publishPayload.thread = ctx.posts.twitter.thread;
+        } else if (apiPlatform === "facebook" && ctx.posts?.facebook) {
+          publishPayload.content = ctx.posts.facebook.content;
+          if (config.uploadedImageUrl) publishPayload.imageUrl = config.uploadedImageUrl;
+        } else if (apiPlatform === "slack") {
+          // Slack: use linkedin content as fallback, or first available post
+          const slackContent = ctx.posts?.linkedin?.content
+            || ctx.posts?.facebook?.content
+            || ctx.posts?.twitter?.content
+            || "Nouveau contenu publie via InfinixLoop";
+          publishPayload.content = slackContent;
+        }
+
+        try {
+          const pubRes = await fetch("/api/agents/publish", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(publishPayload),
+          });
+          const pubData = await pubRes.json();
+
+          if (pubRes.ok && pubData.success) {
+            updateSubStep(steps, "step-publish", sub.id, {
+              status: "done",
+              output: `Publie avec succes sur ${platformName}`,
+              detail: pubData.postId ? `ID: ${pubData.postId}` : pubData.tweetId ? `Tweet ID: ${pubData.tweetId}` : undefined,
+              rawOutput: pubData,
+            }, onUpdate);
+            publishedPlatforms.push(platformName);
+
+            // Store in publication results
+            if (!ctx.publicationResults) ctx.publicationResults = {};
+            (ctx.publicationResults as Record<string, unknown>)[apiPlatform] = {
+              success: true,
+              postId: pubData.postId || pubData.tweetId,
+            };
+          } else {
+            const errMsg = pubData.error || `Erreur ${pubRes.status}`;
+            updateSubStep(steps, "step-publish", sub.id, {
+              status: "error",
+              output: `Echec publication ${platformName}: ${errMsg}`,
+              detail: errMsg,
+              rawOutput: pubData,
+            }, onUpdate);
+            failedPlatforms.push(platformName);
+
+            if (!ctx.publicationResults) ctx.publicationResults = {};
+            (ctx.publicationResults as Record<string, unknown>)[apiPlatform] = {
+              success: false,
+              error: errMsg,
+            };
+          }
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : "Erreur reseau";
+          updateSubStep(steps, "step-publish", sub.id, {
+            status: "error",
+            output: `Echec publication ${platformName}: ${errMsg}`,
+            detail: errMsg,
+            rawOutput: { error: errMsg },
+          }, onUpdate);
+          failedPlatforms.push(platformName);
+        }
       }
     }
   }
@@ -654,11 +745,11 @@ export async function runWebmasterAgent(
     completedAt: Date.now(),
     output: config.dryRun
       ? `Simulation terminee. ${publishedPlatforms.length} posts generes.${failedPlatforms.length > 0 ? ` ${failedPlatforms.length} echec(s).` : ""}`
-      : `Publication: ${publishedPlatforms.length} traitees.${failedPlatforms.length > 0 ? ` ${failedPlatforms.length} echec(s).` : ""}`,
+      : `${publishedPlatforms.length} publication(s) reussie(s).${failedPlatforms.length > 0 ? ` ${failedPlatforms.length} echec(s).` : ""}`,
     rawOutput: { published: publishedPlatforms, failed: failedPlatforms },
   }, onUpdate);
 
-  ctx.publicationResults = {};
+  if (!ctx.publicationResults) ctx.publicationResults = {};
 
   // ── MODULE 5 : Lead Magnet ────────────────────────────────────────────
   if (config.publishLinkedin && steps.find((s) => s.id === "step-lead-magnet")) {
