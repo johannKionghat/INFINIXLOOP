@@ -132,6 +132,20 @@ alter table public.user_api_keys enable row level security;
 create policy "Users can CRUD own api keys" on public.user_api_keys
   for all using (auth.uid() = user_id);
 
+-- Email confirmation tokens
+create table if not exists public.email_confirmations (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid not null,
+  email text not null,
+  token text not null unique,
+  expires_at timestamptz not null,
+  used boolean default false,
+  created_at timestamptz default now()
+);
+
+alter table public.email_confirmations enable row level security;
+-- No RLS policies — only accessed via service role from API routes
+
 -- Password reset tokens
 create table if not exists public.password_resets (
   id uuid default gen_random_uuid() primary key,

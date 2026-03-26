@@ -20,12 +20,6 @@ interface AuthContextType {
   logout: () => Promise<void>;
 }
 
-function getSiteUrl() {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-  if (typeof window !== "undefined") return window.location.origin;
-  return "http://localhost:3000";
-}
-
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
@@ -66,32 +60,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase.auth]);
 
   const login = async (email: string, password: string): Promise<{ error?: string }> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    // Refresh session state from cookies set by the server
+    const { data: { user: su } } = await supabase.auth.getUser();
+    setUser(su ? mapSupabaseUser(su) : null);
     return {};
   };
 
   const signup = async (email: string, password: string, name: string): Promise<{ error?: string; needsConfirmation?: boolean }> => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: name },
-        emailRedirectTo: `${getSiteUrl()}/auth/callback`,
-      },
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name }),
     });
-    if (error) return { error: error.message };
-    if (data.session) {
-      return {};
-    }
-    if (data.user && data.user.identities && data.user.identities.length === 0) {
-      return { error: "Un compte existe deja avec cet email" };
-    }
-    return { needsConfirmation: true };
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    if (data.needsConfirmation) return { needsConfirmation: true };
+    return {};
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    await fetch("/api/auth/logout", { method: "POST" });
     setUser(null);
   };
 
