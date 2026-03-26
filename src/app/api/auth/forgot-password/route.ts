@@ -13,8 +13,8 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-function getSiteUrl(request: Request): string {
-  return process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+function generateCode(): string {
+  return crypto.randomInt(100000, 999999).toString();
 }
 
 export async function POST(request: Request) {
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Check if user exists — use getUserByEmail (Supabase Admin filter) instead of loading ALL users
+    // Check if user exists
     const { data: users, error: listError } = await supabase.auth.admin.listUsers({
       filter: { email },
     } as Parameters<typeof supabase.auth.admin.listUsers>[0]);
@@ -35,41 +35,35 @@ export async function POST(request: Request) {
     }
     const user = users.users.find((u) => u.email === email);
     if (!user) {
-      // Don't reveal that user doesn't exist — return success anyway
+      // Don't reveal that user doesn't exist
       return NextResponse.json({ success: true });
     }
 
-    // Generate token
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+    const code = generateCode();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
 
-    // Invalidate previous tokens for this email
+    // Invalidate previous codes
     await supabase
       .from("password_resets")
       .update({ used: true })
       .eq("email", email)
       .eq("used", false);
 
-    // Store token
     const { error: insertError } = await supabase
       .from("password_resets")
-      .insert({ email, token, expires_at: expiresAt });
+      .insert({ email, token: code, expires_at: expiresAt });
 
     if (insertError) {
       return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
     }
 
-    // Build reset link — derive from request to avoid env var misconfiguration
-    const siteUrl = getSiteUrl(request);
-    const resetLink = `${siteUrl}/reset-password?token=${token}`;
     const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@infinixloop.com";
     const senderName = process.env.BREVO_SENDER_NAME || "InfinixLoop";
 
-    // Send email via Brevo SMTP
     await transporter.sendMail({
       from: `"${senderName}" <${senderEmail}>`,
       to: email,
-      subject: "Reinitialisation de votre mot de passe - InfinixLoop",
+      subject: `${code} — Reinitialisation de votre mot de passe InfinixLoop`,
       headers: {
         "X-Mailin-TrackClick": "0",
         "X-Mailin-TrackOpen": "0",
@@ -85,19 +79,16 @@ export async function POST(request: Request) {
           <h1 style="font-size: 20px; font-weight: 700; color: #0a0a0a; text-align: center; margin-bottom: 12px;">
             Reinitialisation du mot de passe
           </h1>
-          <p style="font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 32px;">
-            Vous avez demande a reinitialiser votre mot de passe. Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe.
+          <p style="font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 24px;">
+            Voici votre code pour reinitialiser votre mot de passe :
           </p>
-          <div style="text-align: center; margin-bottom: 32px;">
-            <a class="sib-no-tracking" href="${resetLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;" data-tracking="false">
-              Reinitialiser mon mot de passe
-            </a>
+          <div style="text-align: center; margin-bottom: 24px;">
+            <div style="display: inline-block; padding: 16px 40px; background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 16px;">
+              <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #0a0a0a; font-family: monospace;">${code}</span>
+            </div>
           </div>
           <p style="font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5;">
-            Ce lien expire dans 1 heure. Si vous n'avez pas fait cette demande, ignorez cet email.
-          </p>
-          <p style="font-size: 11px; color: #9ca3af; text-align: center; line-height: 1.5; word-break: break-all;">
-            Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br/>${resetLink}
+            Ce code expire dans 15 minutes. Si vous n'avez pas fait cette demande, ignorez cet email.
           </p>
           <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 32px 0 16px;" />
           <p style="font-size: 11px; color: #d1d5db; text-align: center;">

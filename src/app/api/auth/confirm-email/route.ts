@@ -1,54 +1,45 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-function buildRedirect(request: Request, path: string): string {
-  const origin = new URL(request.url).origin;
-  return `${origin}${path}`;
-}
-
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const token = searchParams.get("token");
-
-  if (!token) {
-    return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Token+manquant"));
-  }
-
+export async function POST(request: Request) {
   try {
+    const { email, code } = await request.json();
+
+    if (!email || !code) {
+      return NextResponse.json({ error: "Email et code requis" }, { status: 400 });
+    }
+
     const supabase = createAdminClient();
 
-    // Find the token
     const { data: row, error: fetchError } = await supabase
       .from("email_confirmations")
       .select("*")
-      .eq("token", token)
+      .eq("email", email)
+      .eq("token", code)
       .eq("used", false)
       .single();
 
     if (fetchError || !row) {
-      return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Lien+invalide+ou+deja+utilise"));
+      return NextResponse.json({ error: "Code invalide ou deja utilise" }, { status: 400 });
     }
 
-    // Check expiry
     if (new Date(row.expires_at) < new Date()) {
       await supabase.from("email_confirmations").update({ used: true }).eq("id", row.id);
-      return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Ce+lien+a+expire"));
+      return NextResponse.json({ error: "Ce code a expire. Veuillez vous reinscrire." }, { status: 400 });
     }
 
-    // Confirm user via admin API
     const { error: updateError } = await supabase.auth.admin.updateUserById(row.user_id, {
       email_confirm: true,
     });
 
     if (updateError) {
-      return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Erreur+de+confirmation"));
+      return NextResponse.json({ error: "Erreur de confirmation" }, { status: 500 });
     }
 
-    // Mark token as used
     await supabase.from("email_confirmations").update({ used: true }).eq("id", row.id);
 
-    return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=success"));
+    return NextResponse.json({ success: true });
   } catch {
-    return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Erreur+serveur"));
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

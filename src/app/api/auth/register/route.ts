@@ -13,8 +13,8 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-function getSiteUrl(request: Request): string {
-  return process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+function generateCode(): string {
+  return crypto.randomInt(100000, 999999).toString();
 }
 
 export async function POST(request: Request) {
@@ -30,8 +30,6 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Check if user already exists — use createUser which fails on duplicate
-    // instead of listUsers() which loads ALL users
     const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -46,29 +44,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: createError.message }, { status: 500 });
     }
 
-    // Generate confirmation token
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+    const code = generateCode();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
+
+    // Invalidate any previous codes for this email
+    await supabase
+      .from("email_confirmations")
+      .update({ used: true })
+      .eq("email", email)
+      .eq("used", false);
 
     const { error: insertError } = await supabase
       .from("email_confirmations")
-      .insert({ user_id: newUser.user.id, email, token, expires_at: expiresAt });
+      .insert({ user_id: newUser.user.id, email, token: code, expires_at: expiresAt });
 
     if (insertError) {
       return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
     }
 
-    // Build confirmation link — derive from request to avoid env var misconfiguration
-    const siteUrl = getSiteUrl(request);
-    const confirmLink = `${siteUrl}/api/auth/confirm-email?token=${token}`;
     const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@infinixloop.com";
     const senderName = process.env.BREVO_SENDER_NAME || "InfinixLoop";
 
-    // Send confirmation email via Brevo SMTP
     await transporter.sendMail({
       from: `"${senderName}" <${senderEmail}>`,
       to: email,
-      subject: "Confirmez votre compte InfinixLoop",
+      subject: `${code} — Confirmez votre compte InfinixLoop`,
       headers: {
         "X-Mailin-TrackClick": "0",
         "X-Mailin-TrackOpen": "0",
@@ -84,19 +84,16 @@ export async function POST(request: Request) {
           <h1 style="font-size: 20px; font-weight: 700; color: #0a0a0a; text-align: center; margin-bottom: 12px;">
             Bienvenue ${name} !
           </h1>
-          <p style="font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 32px;">
-            Merci de vous etre inscrit sur InfinixLoop. Cliquez sur le bouton ci-dessous pour confirmer votre adresse email et activer votre compte.
+          <p style="font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 24px;">
+            Voici votre code de confirmation pour activer votre compte InfinixLoop :
           </p>
-          <div style="text-align: center; margin-bottom: 32px;">
-            <a class="sib-no-tracking" href="${confirmLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;" data-tracking="false">
-              Confirmer mon email
-            </a>
+          <div style="text-align: center; margin-bottom: 24px;">
+            <div style="display: inline-block; padding: 16px 40px; background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 16px;">
+              <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #0a0a0a; font-family: monospace;">${code}</span>
+            </div>
           </div>
           <p style="font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5;">
-            Ce lien expire dans 24 heures. Si vous n'avez pas cree de compte, ignorez cet email.
-          </p>
-          <p style="font-size: 11px; color: #9ca3af; text-align: center; line-height: 1.5; word-break: break-all;">
-            Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br/>${confirmLink}
+            Ce code expire dans 15 minutes. Si vous n'avez pas cree de compte, ignorez cet email.
           </p>
           <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 32px 0 16px;" />
           <p style="font-size: 11px; color: #d1d5db; text-align: center;">

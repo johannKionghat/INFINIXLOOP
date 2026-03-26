@@ -16,7 +16,6 @@ interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ error?: string }>;
-  signup: (email: string, password: string, name: string) => Promise<{ error?: string; needsConfirmation?: boolean }>;
   logout: () => Promise<void>;
 }
 
@@ -24,7 +23,6 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   login: async () => ({}),
-  signup: async () => ({}),
   logout: async () => {},
 });
 
@@ -67,21 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
-    // Refresh session state from cookies set by the server
     const { data: { user: su } } = await supabase.auth.getUser();
     setUser(su ? mapSupabaseUser(su) : null);
-    return {};
-  };
-
-  const signup = async (email: string, password: string, name: string): Promise<{ error?: string; needsConfirmation?: boolean }> => {
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { error: data.error };
-    if (data.needsConfirmation) return { needsConfirmation: true };
     return {};
   };
 
@@ -91,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
