@@ -82,12 +82,15 @@ export async function POST(request: Request) {
             Vous avez demande a reinitialiser votre mot de passe. Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe.
           </p>
           <div style="text-align: center; margin-bottom: 32px;">
-            <a href="${resetLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;">
+            <a class="sib-no-tracking" href="${resetLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;">
               Reinitialiser mon mot de passe
             </a>
           </div>
           <p style="font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5;">
             Ce lien expire dans 1 heure. Si vous n'avez pas fait cette demande, ignorez cet email.
+          </p>
+          <p style="font-size: 11px; color: #9ca3af; text-align: center; line-height: 1.5; word-break: break-all;">
+            Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br/>${resetLink}
           </p>
           <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 32px 0 16px;" />
           <p style="font-size: 11px; color: #d1d5db; text-align: center;">

@@ -86,12 +86,15 @@ export async function POST(request: Request) {
             Merci de vous etre inscrit sur InfinixLoop. Cliquez sur le bouton ci-dessous pour confirmer votre adresse email et activer votre compte.
           </p>
           <div style="text-align: center; margin-bottom: 32px;">
-            <a href="${confirmLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;">
+            <a class="sib-no-tracking" href="${confirmLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;">
               Confirmer mon email
             </a>
           </div>
           <p style="font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5;">
             Ce lien expire dans 24 heures. Si vous n'avez pas cree de compte, ignorez cet email.
+          </p>
+          <p style="font-size: 11px; color: #9ca3af; text-align: center; line-height: 1.5; word-break: break-all;">
+            Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br/>${confirmLink}
           </p>
           <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 32px 0 16px;" />
           <p style="font-size: 11px; color: #d1d5db; text-align: center;">
