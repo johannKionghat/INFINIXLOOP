@@ -98,7 +98,9 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, needsConfirmation: true });
-  } catch {
-    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[register] Error:", message);
+    return NextResponse.json({ error: "Erreur serveur: " + message }, { status: 500 });
   }
 }
