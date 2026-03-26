@@ -68,6 +68,10 @@ export async function POST(request: Request) {
       from: `"${senderName}" <${senderEmail}>`,
       to: email,
       subject: "Confirmez votre compte InfinixLoop",
+      headers: {
+        "X-Mailin-TrackClick": "0",
+        "X-Mailin-TrackOpen": "0",
+      },
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 24px;">
           <div style="text-align: center; margin-bottom: 32px;">
