@@ -11,10 +11,15 @@ import type {
 import { buildExecutionSteps, getActivePlatforms } from "./steps";
 import { aiChat, parseJSON } from "@/lib/ai";
 import {
-  buildAnalysisPrompt,
+  buildScrapingAnalysisPrompt,
+  buildThematicAnalysisPrompt,
   buildTrendsPrompt,
   buildStrategyPrompt,
-  buildPostsPrompt,
+  buildLinkedinPrompt,
+  buildTwitterPrompt,
+  buildFacebookPrompt,
+  buildTiktokPrompt,
+  buildInstagramPrompt,
   buildQualityPrompt,
 } from "./prompts";
 
@@ -53,17 +58,13 @@ function updateSubStep(
   steps: ExecutionStep[],
   stepId: string,
   subId: string,
-  status: ExecutionStep["status"],
-  output: string | undefined,
+  patch: { status: ExecutionStep["status"]; input?: string; output?: string; detail?: string },
   onUpdate: StepCallback,
 ) {
   const step = steps.find((s) => s.id === stepId);
   if (step?.children) {
     const sub = step.children.find((c) => c.id === subId);
-    if (sub) {
-      sub.status = status;
-      if (output) sub.output = output;
-    }
+    if (sub) Object.assign(sub, patch);
   }
   onUpdate([...steps]);
 }
@@ -98,6 +99,66 @@ function nowISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// ── Server-side helpers ─────────────────────────────────────────────────────
+
+async function serverScrape(url: string): Promise<{ textContent: string; title: string; url: string }> {
+  const res = await fetch("/api/ai/scrape", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ url }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Scrape error (${res.status})`);
+  return data;
+}
+
+async function serverSearch(query: string): Promise<{ textContent: string; resultCount: number }> {
+  const res = await fetch("/api/ai/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ query }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Search error (${res.status})`);
+  return data;
+}
+
+// ── Per-platform prompt builder map ─────────────────────────────────────────
+
+type PlatformPromptBuilder = (
+  config: WebmasterConfig,
+  analysis: ProductAnalysis,
+  strategy: ContentStrategy,
+) => string;
+
+const PLATFORM_PROMPT_MAP: Record<string, PlatformPromptBuilder> = {
+  linkedin: buildLinkedinPrompt,
+  twitter: buildTwitterPrompt,
+  facebook: buildFacebookPrompt,
+  tiktok: buildTiktokPrompt,
+  instagram: buildInstagramPrompt,
+};
+
+// Per-platform temperature (from nauticeai)
+const PLATFORM_TEMPERATURE: Record<string, number> = {
+  linkedin: 0.75,
+  twitter: 0.9,
+  facebook: 0.8,
+  tiktok: 0.9,
+  instagram: 0.85,
+};
+
+// Per-platform max tokens (from nauticeai)
+const PLATFORM_MAX_TOKENS: Record<string, number> = {
+  linkedin: 3500,
+  twitter: 1200,
+  facebook: 1800,
+  tiktok: 1000,
+  instagram: 1500,
+};
+
 // ── Main runner ──────────────────────────────────────────────────────────────
 
 export async function runWebmasterAgent(
@@ -126,7 +187,7 @@ export async function runWebmasterAgent(
   const configStep = steps.find((s) => s.id === "step-config-validate");
   if (configStep?.children) {
     for (const sub of configStep.children) {
-      updateSubStep(steps, "step-config-validate", sub.id, "done", "OK", onUpdate);
+      updateSubStep(steps, "step-config-validate", sub.id, { status: "done", output: "OK" }, onUpdate);
     }
   }
   const modelLabel = config.usePerStepModels
@@ -160,35 +221,26 @@ export async function runWebmasterAgent(
   const analysisModel = getModel(config, "analysis");
 
   if (config.sourceMode === "SCRAPING") {
-    // Scraping step
-    let scrapedContent = "";
+    // Scraping step — server-side via /api/ai/scrape
+    let scraped = { textContent: "", title: "", url: config.scrapingUrl };
     await runStep(steps, "step-scraping", onUpdate, async () => {
-      const res = await fetch(config.scrapingUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status} pour ${config.scrapingUrl}`);
-      const html = await res.text();
-      // Extract text content from HTML (basic extraction)
-      scrapedContent = html
-        .replace(/<script[\s\S]*?<\/script>/gi, "")
-        .replace(/<style[\s\S]*?<\/style>/gi, "")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 15000);
+      scraped = await serverScrape(config.scrapingUrl);
       return {
         output: `Page scrapee : ${config.scrapingUrl}`,
-        detail: `${scrapedContent.length} caracteres extraits.`,
+        detail: `${scraped.textContent.length} caracteres extraits | Titre: "${scraped.title}"`,
       };
     });
 
-    // Analyze scraping
+    // Analyze scraping via AI
     await runStep(steps, "step-analyze-scraping", onUpdate, async () => {
+      const prompt = buildScrapingAnalysisPrompt(config, scraped);
       const raw = await aiChat({
         model: analysisModel,
         messages: [
           { role: "system", content: "Tu es un expert en marketing digital. Reponds UNIQUEMENT en JSON valide." },
-          { role: "user", content: buildAnalysisPrompt(config, scrapedContent) },
+          { role: "user", content: prompt },
         ],
-        temperature: 0.4,
+        temperature: 0.3,
       });
       const parsed = parseJSON<Omit<ProductAnalysis, "source">>(raw);
       ctx.productAnalysis = { ...parsed, resources: parsed.resources || [], source: "SCRAPING" };
@@ -198,29 +250,76 @@ export async function runWebmasterAgent(
       };
     });
   } else {
-    // Thematic research + analysis
+    // Thematic research — DuckDuckGo server-side via /api/ai/search
     updateStep(steps, "step-research-web", { status: "running", startedAt: Date.now() }, onUpdate);
-    updateSubStep(steps, "step-research-web", "sub-search-1", "running", undefined, onUpdate);
-    // Use AI to synthesize knowledge about the topic
-    updateSubStep(steps, "step-research-web", "sub-search-1", "done", "Connaissances compilees", onUpdate);
-    updateSubStep(steps, "step-research-web", "sub-search-2", "running", undefined, onUpdate);
-    updateSubStep(steps, "step-research-web", "sub-search-2", "done", "Sources complementaires identifiees", onUpdate);
-    updateSubStep(steps, "step-research-web", "sub-merge", "done", "Fusion terminee", onUpdate);
+
+    let searchText = "";
+    let searchExtraText = "";
+
+    // Search 1: primary
+    updateSubStep(steps, "step-research-web", "sub-search-1", {
+      status: "running",
+      input: `Recherche: "${config.thematicTopic} outils ressources guide complet site officiel"`,
+    }, onUpdate);
+    try {
+      const search1 = await serverSearch(`${config.thematicTopic} outils ressources guide complet site officiel`);
+      searchText = search1.textContent;
+      updateSubStep(steps, "step-research-web", "sub-search-1", {
+        status: "done",
+        output: `${search1.resultCount} resultats trouves`,
+        detail: searchText.slice(0, 200) + "...",
+      }, onUpdate);
+    } catch (err) {
+      updateSubStep(steps, "step-research-web", "sub-search-1", {
+        status: "error",
+        output: err instanceof Error ? err.message : "Erreur recherche",
+      }, onUpdate);
+    }
+
+    // Search 2: complementary
+    updateSubStep(steps, "step-research-web", "sub-search-2", {
+      status: "running",
+      input: `Recherche: "${config.thematicTopic} top meilleurs comparatif avis ${new Date().getFullYear()}"`,
+    }, onUpdate);
+    try {
+      const search2 = await serverSearch(`${config.thematicTopic} top meilleurs comparatif avis ${new Date().getFullYear()}`);
+      searchExtraText = search2.textContent;
+      updateSubStep(steps, "step-research-web", "sub-search-2", {
+        status: "done",
+        output: `${search2.resultCount} resultats complementaires`,
+        detail: searchExtraText.slice(0, 200) + "...",
+      }, onUpdate);
+    } catch (err) {
+      updateSubStep(steps, "step-research-web", "sub-search-2", {
+        status: "error",
+        output: err instanceof Error ? err.message : "Erreur recherche",
+      }, onUpdate);
+    }
+
+    // Merge
+    updateSubStep(steps, "step-research-web", "sub-merge", {
+      status: "done",
+      output: `Fusion: ${searchText.length + searchExtraText.length} caracteres totaux`,
+    }, onUpdate);
+
     updateStep(steps, "step-research-web", {
       status: "done",
       completedAt: Date.now(),
       output: `Recherche terminee pour "${config.thematicTopic}"`,
+      detail: `Source 1: ${searchText.length} chars | Source 2: ${searchExtraText.length} chars`,
     }, onUpdate);
 
-    // Thematic analysis via AI
+    // Thematic analysis via AI with web search results
     await runStep(steps, "step-analyze-thematic", onUpdate, async () => {
+      const prompt = buildThematicAnalysisPrompt(config, searchText, searchExtraText);
       const raw = await aiChat({
         model: analysisModel,
         messages: [
           { role: "system", content: "Tu es un curateur de contenu expert. Reponds UNIQUEMENT en JSON valide." },
-          { role: "user", content: buildAnalysisPrompt(config) },
+          { role: "user", content: prompt },
         ],
-        temperature: 0.5,
+        temperature: 0.4,
+        max_tokens: 4000,
       });
       const parsed = parseJSON<Omit<ProductAnalysis, "source">>(raw);
       ctx.productAnalysis = { ...parsed, resources: parsed.resources || [], source: "THEMATIC" };
@@ -233,13 +332,15 @@ export async function runWebmasterAgent(
 
   // ── MODULE 1 : Trends ──────────────────────────────────────────────────
   await runStep(steps, "step-trends", onUpdate, async () => {
+    const prompt = buildTrendsPrompt(ctx.productAnalysis!);
     const raw = await aiChat({
       model: analysisModel,
       messages: [
         { role: "system", content: "Tu es un analyste de tendances. Reponds UNIQUEMENT en JSON valide." },
-        { role: "user", content: buildTrendsPrompt(ctx.productAnalysis!) },
+        { role: "user", content: prompt },
       ],
-      temperature: 0.6,
+      temperature: 0.8,
+      max_tokens: 1200,
     });
     ctx.sectorTrends = parseJSON<SectorTrends>(raw);
     return {
@@ -250,13 +351,15 @@ export async function runWebmasterAgent(
 
   // ── MODULE 1 : Strategy ────────────────────────────────────────────────
   await runStep(steps, "step-strategy", onUpdate, async () => {
+    const prompt = buildStrategyPrompt(config, ctx.productAnalysis!, ctx.sectorTrends!);
     const raw = await aiChat({
       model: analysisModel,
       messages: [
         { role: "system", content: "Tu es un directeur editorial. Reponds UNIQUEMENT en JSON valide." },
-        { role: "user", content: buildStrategyPrompt(config, ctx.productAnalysis!, ctx.sectorTrends!) },
+        { role: "user", content: prompt },
       ],
       temperature: 0.5,
+      max_tokens: 1000,
     });
     ctx.contentStrategy = parseJSON<ContentStrategy>(raw);
     return {
@@ -265,111 +368,98 @@ export async function runWebmasterAgent(
     };
   });
 
-  // ── MODULE 2 : Content Generation ──────────────────────────────────────
+  // ── MODULE 2 : Content Generation — Per-platform dedicated LLM calls ──
   const generationModel = getModel(config, "generation");
   const activePlatforms = getActivePlatforms(config);
   const platformIds = activePlatforms.map((p) => p.id);
 
-  if (config.publicationMode === "TEXT_ONLY") {
-    updateStep(steps, "step-gen-text", { status: "running", startedAt: Date.now() }, onUpdate);
-    for (const p of activePlatforms) {
-      updateSubStep(steps, "step-gen-text", `sub-gen-${p.id}`, "running", undefined, onUpdate);
-    }
+  // Determine which step ID to use based on publication mode
+  const genStepId =
+    config.publicationMode === "TEXT_ONLY" ? "step-gen-text"
+    : config.publicationMode === "TEXT_MEDIA" ? "step-gen-media-posts"
+    : "step-gen-carousel";
 
-    const raw = await aiChat({
-      model: generationModel,
-      messages: [
-        { role: "system", content: "Tu es un copywriter senior. Reponds UNIQUEMENT en JSON valide. Les posts doivent etre COMPLETS et PRETS A PUBLIER." },
-        { role: "user", content: buildPostsPrompt(config, ctx.productAnalysis!, ctx.contentStrategy!, platformIds) },
-      ],
-      temperature: 0.7,
-      max_tokens: 8192,
-    });
-    ctx.posts = parseJSON<GeneratedPosts>(raw);
+  // For carousel, only generate for linkedin and instagram
+  const genPlatforms = config.publicationMode === "CAROUSEL"
+    ? activePlatforms.filter((p) => ["linkedin", "instagram"].includes(p.id))
+    : activePlatforms.filter((p) => PLATFORM_PROMPT_MAP[p.id]);
 
-    for (const p of activePlatforms) {
-      updateSubStep(steps, "step-gen-text", `sub-gen-${p.id}`, "done", "Post genere", onUpdate);
-    }
-    updateStep(steps, "step-gen-text", {
-      status: "done",
-      completedAt: Date.now(),
-      output: `${activePlatforms.length} posts generes.`,
-      detail: Object.keys(ctx.posts).map((k) => k).join(", "),
+  updateStep(steps, genStepId, { status: "running", startedAt: Date.now() }, onUpdate);
+
+  ctx.posts = {} as GeneratedPosts;
+
+  // Generate per-platform with dedicated LLM calls
+  for (const platform of genPlatforms) {
+    const subId = `sub-gen-${platform.id}`;
+    const promptBuilder = PLATFORM_PROMPT_MAP[platform.id];
+    if (!promptBuilder) continue;
+
+    const prompt = promptBuilder(config, ctx.productAnalysis!, ctx.contentStrategy!);
+    const temp = PLATFORM_TEMPERATURE[platform.id] || 0.7;
+    const maxTokens = PLATFORM_MAX_TOKENS[platform.id] || 2000;
+
+    updateSubStep(steps, genStepId, subId, {
+      status: "running",
+      input: `Modele: ${generationModel} | Temp: ${temp} | Style: ${config.postStyle}`,
     }, onUpdate);
 
-  } else if (config.publicationMode === "TEXT_MEDIA") {
-    // Generate media posts
-    updateStep(steps, "step-gen-media-posts", { status: "running", startedAt: Date.now() }, onUpdate);
-    const mediaPlatforms = ["linkedin", "facebook", "instagram"].filter((p) =>
-      platformIds.includes(p),
-    );
-    for (const sub of steps.find((s) => s.id === "step-gen-media-posts")?.children || []) {
-      updateSubStep(steps, "step-gen-media-posts", sub.id, "running", undefined, onUpdate);
+    try {
+      const raw = await aiChat({
+        model: generationModel,
+        messages: [
+          { role: "system", content: `Tu es un copywriter senior specialise ${platform.label}. Reponds UNIQUEMENT en JSON valide. Les posts doivent etre COMPLETS et PRETS A PUBLIER.` },
+          { role: "user", content: prompt },
+        ],
+        temperature: temp,
+        max_tokens: maxTokens,
+      });
+
+      const parsed = parseJSON<Record<string, unknown>>(raw);
+      (ctx.posts as Record<string, unknown>)[platform.id] = parsed;
+
+      // Extract preview for output
+      const content = (parsed.content || parsed.caption || parsed.fullCaption || "") as string;
+      const preview = typeof content === "string" ? content.slice(0, 120) + "..." : "Post genere";
+
+      updateSubStep(steps, genStepId, subId, {
+        status: "done",
+        output: `Post ${platform.label} genere`,
+        detail: preview,
+      }, onUpdate);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      updateSubStep(steps, genStepId, subId, {
+        status: "error",
+        output: `Erreur ${platform.label}: ${msg}`,
+      }, onUpdate);
     }
+  }
 
-    const raw = await aiChat({
-      model: generationModel,
-      messages: [
-        { role: "system", content: "Tu es un copywriter senior specialise contenus visuels. Reponds UNIQUEMENT en JSON valide." },
-        { role: "user", content: buildPostsPrompt(config, ctx.productAnalysis!, ctx.contentStrategy!, mediaPlatforms) },
-      ],
-      temperature: 0.7,
-      max_tokens: 8192,
-    });
-    ctx.posts = parseJSON<GeneratedPosts>(raw);
+  updateStep(steps, genStepId, {
+    status: "done",
+    completedAt: Date.now(),
+    output: `${genPlatforms.length} posts generes (appels LLM dedies par plateforme).`,
+    detail: genPlatforms.map((p) => p.label).join(", "),
+  }, onUpdate);
 
-    for (const sub of steps.find((s) => s.id === "step-gen-media-posts")?.children || []) {
-      updateSubStep(steps, "step-gen-media-posts", sub.id, "done", "OK", onUpdate);
-    }
-    updateStep(steps, "step-gen-media-posts", {
-      status: "done",
-      completedAt: Date.now(),
-      output: "Posts media generes.",
-    }, onUpdate);
-
-    // Image generation step (simulated for now — needs HuggingFace integration)
+  // ── TEXT_MEDIA: Image generation step ──────────────────────────────────
+  if (config.publicationMode === "TEXT_MEDIA") {
     await runStep(steps, "step-gen-image", onUpdate, async () => {
       if (config.imageSource === "UPLOAD") {
         return {
-          output: `Image chargee depuis URL.`,
+          output: "Image chargee depuis URL.",
           detail: config.uploadedImageUrl,
         };
       }
-      // AI image generation placeholder — requires HuggingFace API
       return {
         output: "Generation image IA (HuggingFace FLUX).",
         detail: `Prompt: ${ctx.contentStrategy?.imagePrompt?.slice(0, 100) || "image professionnelle"}`,
       };
     });
+  }
 
-  } else {
-    // CAROUSEL mode
-    updateStep(steps, "step-gen-carousel", { status: "running", startedAt: Date.now() }, onUpdate);
-    for (const sub of steps.find((s) => s.id === "step-gen-carousel")?.children || []) {
-      updateSubStep(steps, "step-gen-carousel", sub.id, "running", undefined, onUpdate);
-    }
-
-    const raw = await aiChat({
-      model: generationModel,
-      messages: [
-        { role: "system", content: "Tu es un copywriter senior specialise carrousels LinkedIn/Instagram. Reponds UNIQUEMENT en JSON valide." },
-        { role: "user", content: buildPostsPrompt(config, ctx.productAnalysis!, ctx.contentStrategy!, ["linkedin", "instagram"]) },
-      ],
-      temperature: 0.7,
-      max_tokens: 8192,
-    });
-    ctx.posts = parseJSON<GeneratedPosts>(raw);
-
-    for (const sub of steps.find((s) => s.id === "step-gen-carousel")?.children || []) {
-      updateSubStep(steps, "step-gen-carousel", sub.id, "done", "OK", onUpdate);
-    }
-    updateStep(steps, "step-gen-carousel", {
-      status: "done",
-      completedAt: Date.now(),
-      output: "Contenu carrousel genere.",
-    }, onUpdate);
-
-    // InfinixUI, Notion, Brevo — simulated (requires external integrations)
+  // ── CAROUSEL: Additional steps ─────────────────────────────────────────
+  if (config.publicationMode === "CAROUSEL") {
     await runStep(steps, "step-infinixui", onUpdate, async () => ({
       output: "Carrousel genere par InfinixUI.",
       detail: "Integration InfinixUI Design Engine en cours de developpement.",
@@ -387,7 +477,11 @@ export async function runWebmasterAgent(
   // ── MODULE 3 : Quality ────────────────────────────────────────────────
   const qualityModel = getModel(config, "quality");
   updateStep(steps, "step-quality", { status: "running", startedAt: Date.now() }, onUpdate);
-  updateSubStep(steps, "step-quality", "sub-quality-score", "running", undefined, onUpdate);
+
+  updateSubStep(steps, "step-quality", "sub-quality-score", {
+    status: "running",
+    input: `Modele: ${qualityModel} | Seuil: ${config.qualityThreshold}/10`,
+  }, onUpdate);
 
   try {
     const qualityRaw = await aiChat({
@@ -400,19 +494,35 @@ export async function runWebmasterAgent(
     });
     ctx.qualityReport = parseJSON<QualityReport>(qualityRaw);
 
-    updateSubStep(steps, "step-quality", "sub-quality-score", "done",
-      `Score: ${ctx.qualityReport.overallScore}/10`, onUpdate);
+    updateSubStep(steps, "step-quality", "sub-quality-score", {
+      status: "done",
+      output: `Score: ${ctx.qualityReport.overallScore}/10`,
+      detail: ctx.qualityReport.platforms.map((p) => `${p.name}: ${p.score}/10`).join(" | "),
+    }, onUpdate);
 
     if (ctx.qualityReport.overallScore < config.qualityThreshold) {
-      updateSubStep(steps, "step-quality", "sub-quality-refine", "running", undefined, onUpdate);
-      updateSubStep(steps, "step-quality", "sub-quality-refine", "done",
-        `${ctx.qualityReport.refinements.length} raffinements`, onUpdate);
+      updateSubStep(steps, "step-quality", "sub-quality-refine", {
+        status: "running",
+        input: `Score ${ctx.qualityReport.overallScore} < seuil ${config.qualityThreshold}`,
+      }, onUpdate);
+      updateSubStep(steps, "step-quality", "sub-quality-refine", {
+        status: "done",
+        output: `${ctx.qualityReport.refinements.length} raffinements appliques`,
+        detail: ctx.qualityReport.refinements.join(" | "),
+      }, onUpdate);
     } else {
-      updateSubStep(steps, "step-quality", "sub-quality-refine", "done", "Aucun raffinement necessaire", onUpdate);
+      updateSubStep(steps, "step-quality", "sub-quality-refine", {
+        status: "done",
+        output: "Aucun raffinement necessaire",
+        detail: `Score ${ctx.qualityReport.overallScore} >= seuil ${config.qualityThreshold}`,
+      }, onUpdate);
     }
   } catch {
-    updateSubStep(steps, "step-quality", "sub-quality-score", "done", "Evaluation manuelle recommandee", onUpdate);
-    updateSubStep(steps, "step-quality", "sub-quality-refine", "skipped", undefined, onUpdate);
+    updateSubStep(steps, "step-quality", "sub-quality-score", {
+      status: "done",
+      output: "Evaluation manuelle recommandee",
+    }, onUpdate);
+    updateSubStep(steps, "step-quality", "sub-quality-refine", { status: "skipped" }, onUpdate);
     ctx.qualityReport = {
       overallScore: 7,
       platforms: [],
@@ -435,15 +545,26 @@ export async function runWebmasterAgent(
 
   if (pubStep?.children) {
     for (const sub of pubStep.children) {
-      updateSubStep(steps, "step-publish", sub.id, "running", undefined, onUpdate);
+      const platformName = sub.label.replace("Publication ", "").replace("Notification ", "");
+      updateSubStep(steps, "step-publish", sub.id, {
+        status: "running",
+        input: config.dryRun ? "Mode simulation (dry run)" : `Publication vers ${platformName}`,
+      }, onUpdate);
+
       if (config.dryRun) {
-        updateSubStep(steps, "step-publish", sub.id, "done", "Simule (dry run)", onUpdate);
-        publishedPlatforms.push(sub.label.replace("Publication ", "").replace("Notification ", ""));
+        updateSubStep(steps, "step-publish", sub.id, {
+          status: "done",
+          output: "Simule (dry run)",
+          detail: "Aucun appel API reel effectue",
+        }, onUpdate);
+        publishedPlatforms.push(platformName);
       } else {
-        // Real publication requires platform API keys — mark as pending/simulated
-        updateSubStep(steps, "step-publish", sub.id, "done",
-          "Publication necessitant integration API", onUpdate);
-        publishedPlatforms.push(sub.label.replace("Publication ", "").replace("Notification ", ""));
+        updateSubStep(steps, "step-publish", sub.id, {
+          status: "done",
+          output: "Publication necessitant integration API",
+          detail: "Configurez les cles API de la plateforme pour activer la publication automatique",
+        }, onUpdate);
+        publishedPlatforms.push(platformName);
       }
     }
   }

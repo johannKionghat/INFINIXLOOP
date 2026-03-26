@@ -68,7 +68,9 @@ export interface ExecutionSubStep {
   id: string;
   label: string;
   status: StepStatus;
+  input?: string;
   output?: string;
+  detail?: string;
 }
 
 export interface WebmasterContext {

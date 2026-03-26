@@ -128,22 +128,41 @@ function StepCard({ step, isLast }: { step: ExecutionStep; isLast: boolean }) {
               {step.children!.length} sous-etapes
             </button>
             {expanded && (
-              <div className="mt-1.5 pl-3 border-l-2 border-gray-100 flex flex-col gap-1.5">
+              <div className="mt-1.5 pl-3 border-l-2 border-gray-100 flex flex-col gap-2">
                 {step.children!.map((sub) => (
-                  <div key={sub.id} className="flex items-center gap-2">
-                    <StatusBadge status={sub.status} />
-                    <span
-                      className={cn(
-                        "text-xs",
-                        sub.status === "done" ? "text-gray-600" :
-                        sub.status === "running" ? "text-blue-600 font-medium" :
-                        "text-gray-300"
-                      )}
-                    >
-                      {sub.label}
-                    </span>
-                    {sub.output && (
-                      <span className="text-xs text-gray-400">— {sub.output}</span>
+                  <div key={sub.id} className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={sub.status} />
+                      <span
+                        className={cn(
+                          "text-xs",
+                          sub.status === "done" ? "text-gray-600" :
+                          sub.status === "running" ? "text-blue-600 font-medium" :
+                          sub.status === "error" ? "text-red-500" :
+                          "text-gray-300"
+                        )}
+                      >
+                        {sub.label}
+                      </span>
+                    </div>
+                    {(sub.input || sub.output || sub.detail) && (
+                      <div className="ml-5.5 pl-2 border-l border-gray-100">
+                        {sub.input && (
+                          <div className="flex items-start gap-1 text-[11px]">
+                            <span className="text-gray-400 font-medium shrink-0">IN</span>
+                            <span className="text-gray-400">{sub.input}</span>
+                          </div>
+                        )}
+                        {sub.output && (
+                          <div className="flex items-start gap-1 text-[11px]">
+                            <span className="text-green-500 font-medium shrink-0">OUT</span>
+                            <span className="text-gray-500">{sub.output}</span>
+                          </div>
+                        )}
+                        {sub.detail && (
+                          <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-2">{sub.detail}</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))}
