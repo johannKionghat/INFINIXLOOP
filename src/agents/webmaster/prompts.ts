@@ -378,7 +378,7 @@ ADAPTATION MODE :
 - TEXT_MEDIA : post LONG aussi, l'image accompagne mais ne remplace pas.
 - CAROUSEL : teaser detaille.
 
-Reponds UNIQUEMENT en JSON valide :
+JSON :
 {"angle":"angle choisi","openingLine":"1ere phrase accrocheuse adaptee au style ${config.postStyle}","coreValue":"valeur apportee au lecteur","proofElement":"preuve concrete (stat ou fait)","ctaSuggestion":"CTA adapte au style ${config.postStyle}","tone":"voix choisie","postType":"type libre choisi","resourceStrategy":"comment integrer les ressources","imagePrompt":"${config.publicationMode === "TEXT_MEDIA" ? "prompt detaille pour generation image (style pro, sans texte, 1080x1080)" : ""}","carouselTeaser":"${config.publicationMode === "CAROUSEL" ? "texte teaser pour accompagner le carrousel" : ""}"}`;
 }
 

@@ -8,14 +8,20 @@ interface AIChatOptions {
   messages: ChatMessage[];
   temperature?: number;
   max_tokens?: number;
+  responseFormat?: "json" | "text";
 }
 
 export async function aiChat(options: AIChatOptions): Promise<string> {
+  const { responseFormat, ...rest } = options;
+  const payload: Record<string, unknown> = { ...rest };
+  if (responseFormat === "json") {
+    payload.response_format = { type: "json_object" };
+  }
   const res = await fetch("/api/ai/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify(options),
+    body: JSON.stringify(payload),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -29,7 +35,7 @@ export async function aiChat(options: AIChatOptions): Promise<string> {
  * by sending the raw response back to the LLM with a "fix your JSON" prompt.
  */
 export async function aiChatJSON<T>(options: AIChatOptions): Promise<T> {
-  const raw = await aiChat(options);
+  const raw = await aiChat({ ...options, responseFormat: "json" });
 
   // First try: parse directly
   try {

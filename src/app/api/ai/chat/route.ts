@@ -11,6 +11,7 @@ interface ChatRequest {
   messages: ChatMessage[];
   temperature?: number;
   max_tokens?: number;
+  response_format?: { type: string };
 }
 
 function getProvider(model: string): string {
@@ -35,19 +36,24 @@ async function callOpenAICompatible(
   messages: ChatMessage[],
   temperature: number,
   maxTokens: number,
+  responseFormat?: { type: string },
 ): Promise<string> {
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  };
+  if (responseFormat) {
+    body.response_format = responseFormat;
+  }
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -104,7 +110,7 @@ export async function POST(request: Request) {
     }
 
     const body: ChatRequest = await request.json();
-    const { model, messages, temperature = 0.7, max_tokens = 4096 } = body;
+    const { model, messages, temperature = 0.7, max_tokens = 4096, response_format } = body;
 
     if (!model || !messages?.length) {
       return NextResponse.json({ error: "model and messages required" }, { status: 400 });
@@ -136,7 +142,7 @@ export async function POST(request: Request) {
     if (provider === "anthropic") {
       content = await callAnthropic(apiKey, model, messages, temperature, max_tokens);
     } else {
-      content = await callOpenAICompatible(providerConf.url, apiKey, model, messages, temperature, max_tokens);
+      content = await callOpenAICompatible(providerConf.url, apiKey, model, messages, temperature, max_tokens, response_format);
     }
 
     return NextResponse.json({ content });
