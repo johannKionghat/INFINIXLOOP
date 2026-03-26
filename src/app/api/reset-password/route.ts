@@ -32,8 +32,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Ce lien a expire. Veuillez refaire une demande." }, { status: 400 });
     }
 
-    // Find user by email
-    const { data: users, error: listError } = await supabase.auth.admin.listUsers();
+    // Find user by email — filtered lookup instead of loading ALL users
+    const { data: users, error: listError } = await supabase.auth.admin.listUsers({
+      filter: { email: resetRow.email },
+    } as Parameters<typeof supabase.auth.admin.listUsers>[0]);
     if (listError) {
       return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
     }

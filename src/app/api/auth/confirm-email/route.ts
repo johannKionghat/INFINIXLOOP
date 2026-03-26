@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+function buildRedirect(request: Request, path: string): string {
+  const origin = new URL(request.url).origin;
+  return `${origin}${path}`;
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const token = searchParams.get("token");
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
   if (!token) {
-    return NextResponse.redirect(`${siteUrl}/confirm-email?status=error&message=Token+manquant`);
+    return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Token+manquant"));
   }
 
   try {
@@ -22,13 +26,13 @@ export async function GET(request: Request) {
       .single();
 
     if (fetchError || !row) {
-      return NextResponse.redirect(`${siteUrl}/confirm-email?status=error&message=Lien+invalide+ou+deja+utilise`);
+      return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Lien+invalide+ou+deja+utilise"));
     }
 
     // Check expiry
     if (new Date(row.expires_at) < new Date()) {
       await supabase.from("email_confirmations").update({ used: true }).eq("id", row.id);
-      return NextResponse.redirect(`${siteUrl}/confirm-email?status=error&message=Ce+lien+a+expire`);
+      return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Ce+lien+a+expire"));
     }
 
     // Confirm user via admin API
@@ -37,14 +41,14 @@ export async function GET(request: Request) {
     });
 
     if (updateError) {
-      return NextResponse.redirect(`${siteUrl}/confirm-email?status=error&message=Erreur+de+confirmation`);
+      return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Erreur+de+confirmation"));
     }
 
     // Mark token as used
     await supabase.from("email_confirmations").update({ used: true }).eq("id", row.id);
 
-    return NextResponse.redirect(`${siteUrl}/confirm-email?status=success`);
+    return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=success"));
   } catch {
-    return NextResponse.redirect(`${siteUrl}/confirm-email?status=error&message=Erreur+serveur`);
+    return NextResponse.redirect(buildRedirect(request, "/confirm-email?status=error&message=Erreur+serveur"));
   }
 }

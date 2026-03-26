@@ -13,6 +13,10 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+function getSiteUrl(request: Request): string {
+  return process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+}
+
 export async function POST(request: Request) {
   try {
     const { email } = await request.json();
@@ -22,8 +26,10 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Check if user exists
-    const { data: users, error: listError } = await supabase.auth.admin.listUsers();
+    // Check if user exists — use getUserByEmail (Supabase Admin filter) instead of loading ALL users
+    const { data: users, error: listError } = await supabase.auth.admin.listUsers({
+      filter: { email },
+    } as Parameters<typeof supabase.auth.admin.listUsers>[0]);
     if (listError) {
       return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
     }
@@ -53,8 +59,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
     }
 
-    // Build reset link
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    // Build reset link — derive from request to avoid env var misconfiguration
+    const siteUrl = getSiteUrl(request);
     const resetLink = `${siteUrl}/reset-password?token=${token}`;
     const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@infinixloop.com";
     const senderName = process.env.BREVO_SENDER_NAME || "InfinixLoop";
@@ -67,6 +73,7 @@ export async function POST(request: Request) {
       headers: {
         "X-Mailin-TrackClick": "0",
         "X-Mailin-TrackOpen": "0",
+        "X-Mailin-Tag": "transactional",
       },
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 24px;">
@@ -82,7 +89,7 @@ export async function POST(request: Request) {
             Vous avez demande a reinitialiser votre mot de passe. Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe.
           </p>
           <div style="text-align: center; margin-bottom: 32px;">
-            <a class="sib-no-tracking" href="${resetLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;">
+            <a class="sib-no-tracking" href="${resetLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;" data-tracking="false">
               Reinitialiser mon mot de passe
             </a>
           </div>

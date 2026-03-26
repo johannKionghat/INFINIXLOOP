@@ -13,6 +13,10 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+function getSiteUrl(request: Request): string {
+  return process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+}
+
 export async function POST(request: Request) {
   try {
     const { email, password, name } = await request.json();
@@ -26,14 +30,8 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Check if user already exists
-    const { data: existingUsers } = await supabase.auth.admin.listUsers();
-    const exists = existingUsers?.users.find((u) => u.email === email);
-    if (exists) {
-      return NextResponse.json({ error: "Un compte existe deja avec cet email" }, { status: 400 });
-    }
-
-    // Create user via admin API (email_confirm: false — we handle confirmation ourselves)
+    // Check if user already exists — use createUser which fails on duplicate
+    // instead of listUsers() which loads ALL users
     const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -42,6 +40,9 @@ export async function POST(request: Request) {
     });
 
     if (createError) {
+      if (createError.message.includes("already been registered") || createError.message.includes("already exists")) {
+        return NextResponse.json({ error: "Un compte existe deja avec cet email" }, { status: 400 });
+      }
       return NextResponse.json({ error: createError.message }, { status: 500 });
     }
 
@@ -57,8 +58,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
     }
 
-    // Build confirmation link
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    // Build confirmation link — derive from request to avoid env var misconfiguration
+    const siteUrl = getSiteUrl(request);
     const confirmLink = `${siteUrl}/api/auth/confirm-email?token=${token}`;
     const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@infinixloop.com";
     const senderName = process.env.BREVO_SENDER_NAME || "InfinixLoop";
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
       headers: {
         "X-Mailin-TrackClick": "0",
         "X-Mailin-TrackOpen": "0",
+        "X-Mailin-Tag": "transactional",
       },
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 24px;">
@@ -86,7 +88,7 @@ export async function POST(request: Request) {
             Merci de vous etre inscrit sur InfinixLoop. Cliquez sur le bouton ci-dessous pour confirmer votre adresse email et activer votre compte.
           </p>
           <div style="text-align: center; margin-bottom: 32px;">
-            <a class="sib-no-tracking" href="${confirmLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;">
+            <a class="sib-no-tracking" href="${confirmLink}" style="display: inline-block; padding: 12px 32px; background: #0a0a0a; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 14px; font-weight: 600;" data-tracking="false">
               Confirmer mon email
             </a>
           </div>
