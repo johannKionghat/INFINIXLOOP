@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Globe, Play, RotateCcw, ChevronDown, ChevronRight, Settings, Share2, FileText, Layers, Palette, Database, ImageIcon, Brain } from "lucide-react";
+import { Globe, Play, RotateCcw, ChevronDown, ChevronRight, Settings, Share2, FileText, Layers, Palette, Database, ImageIcon, Brain, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExecutionStepsView } from "@/components/execution-steps";
 import {
@@ -45,13 +45,62 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
+const AGENT_ID = "webmaster";
+
+async function loadSavedConfig(): Promise<WebmasterConfig | null> {
+  try {
+    const res = await fetch(`/api/agents/config?agent_id=${AGENT_ID}`, { credentials: "include" });
+    const data = await res.json();
+    if (data.config && typeof data.config === "object") {
+      return { ...getDefaultConfig(), ...data.config } as WebmasterConfig;
+    }
+  } catch { /* use defaults */ }
+  return null;
+}
+
+async function saveConfig(config: WebmasterConfig) {
+  try {
+    await fetch("/api/agents/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ agent_id: AGENT_ID, config }),
+    });
+  } catch { /* silent */ }
+}
+
 export default function WebmasterPage() {
   const [config, setConfig] = useState<WebmasterConfig>(getDefaultConfig());
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [steps, setSteps] = useState<ExecutionStep[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [context, setContext] = useState<WebmasterContext | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ model: true, mode: true, source: true, style: true, platforms: true });
   const stepsRef = useRef<HTMLDivElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+
+  // Load saved config on mount
+  useEffect(() => {
+    loadSavedConfig().then((saved) => {
+      if (saved) setConfig(saved);
+      setConfigLoaded(true);
+    });
+  }, []);
+
+  // Auto-save config on change (debounced 800ms)
+  useEffect(() => {
+    if (!configLoaded) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSaveStatus("saving");
+    saveTimerRef.current = setTimeout(() => {
+      saveConfig(config).then(() => {
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 1500);
+      });
+    }, 800);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [config, configLoaded]);
 
   const updateConfig = useCallback((key: keyof WebmasterConfig, value: unknown) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -156,7 +205,19 @@ export default function WebmasterPage() {
         {/* Left: Config form */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-y-auto">
           <div className="px-5 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-            <h2 className="text-sm font-semibold text-gray-950">Configuration</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-950">Configuration</h2>
+              {saveStatus === "saving" && (
+                <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Sauvegarde...
+                </span>
+              )}
+              {saveStatus === "saved" && (
+                <span className="flex items-center gap-1 text-[11px] text-green-500">
+                  <Check className="w-3 h-3" /> Sauvegarde
+                </span>
+              )}
+            </div>
             <p className="text-xs text-gray-400 mt-0.5">Tous les parametres du workflow</p>
           </div>
           <div className="p-4">
