@@ -27,8 +27,22 @@ export async function aiChat(options: AIChatOptions): Promise<string> {
 export function parseJSON<T>(raw: string): T {
   // Extract JSON from markdown code blocks if present
   const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonStr = match ? match[1].trim() : raw.trim();
-  return JSON.parse(jsonStr);
+  let jsonStr = match ? match[1].trim() : raw.trim();
+
+  // Remove bad control characters that LLMs sometimes produce (tabs/newlines inside JSON strings)
+  // Replace literal control chars (0x00-0x1F except \n \r \t) that break JSON.parse
+  jsonStr = jsonStr.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    // Second attempt: escape unescaped newlines/tabs inside JSON string values
+    const cleaned = jsonStr.replace(
+      /"(?:[^"\\]|\\.)*"/g,
+      (match) => match.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t"),
+    );
+    return JSON.parse(cleaned);
+  }
 }
 
 // ── Model registry ──────────────────────────────────────────────────────────

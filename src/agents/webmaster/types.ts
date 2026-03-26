@@ -50,6 +50,15 @@ export interface WebmasterConfig {
   dryRun: boolean;
 }
 
+export interface StepData {
+  input?: string;
+  output?: string;
+  detail?: string;
+  /** Full JSON data for popup inspection (no secrets) */
+  rawInput?: unknown;
+  rawOutput?: unknown;
+}
+
 export interface ExecutionStep {
   id: string;
   module: string;
@@ -61,6 +70,9 @@ export interface ExecutionStep {
   completedAt?: number;
   output?: string;
   detail?: string;
+  /** Full data for popup inspection */
+  rawInput?: unknown;
+  rawOutput?: unknown;
   children?: ExecutionSubStep[];
 }
 
@@ -71,6 +83,9 @@ export interface ExecutionSubStep {
   input?: string;
   output?: string;
   detail?: string;
+  /** Full JSON data for popup inspection (no secrets) */
+  rawInput?: unknown;
+  rawOutput?: unknown;
 }
 
 export interface WebmasterContext {
