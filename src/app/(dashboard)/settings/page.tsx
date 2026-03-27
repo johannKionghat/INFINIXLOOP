@@ -5,7 +5,7 @@ import {
   Settings, Save, Check, Eye, EyeOff, ExternalLink, Shield,
   Sparkles, Brain, Wind, Zap, Image as ImageIcon, Briefcase,
   AtSign, ThumbsUp, MessageCircle, Phone, Hash, BookOpen, Mail,
-  KeyRound, ChevronDown, ChevronRight,
+  KeyRound, ChevronDown, ChevronRight, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -31,6 +31,7 @@ const SECTION_ICON_MAP: Record<string, LucideIcon> = {
   Hash,
   BookOpen,
   Mail,
+  Layers,
 };
 
 const CATEGORY_GROUPS = [
@@ -48,6 +49,11 @@ const CATEGORY_GROUPS = [
     label: "Messagerie",
     icon: MessageCircle,
     sectionIds: ["whatsapp_group", "whatsapp_business"],
+  },
+  {
+    label: "Design & Carrousel",
+    icon: Layers,
+    sectionIds: ["infinixui"],
   },
   {
     label: "Notifications & Productivite",
