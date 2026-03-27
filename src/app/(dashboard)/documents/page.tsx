@@ -141,7 +141,7 @@ export default function DocumentsPage() {
                     )}
                     {doc.infinixui_project_id && (
                       <a
-                        href={`https://infinixui.com/editor/${doc.infinixui_project_id}`}
+                        href={(doc.metadata as Record<string, string>)?.infinixui_editor_url || `https://infinixui.com/carousel/studio?session=${doc.infinixui_project_id}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-1.5 rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
@@ -202,7 +202,7 @@ export default function DocumentsPage() {
               )}
               {previewDoc.infinixui_project_id && (
                 <a
-                  href={`https://infinixui.com/editor/${previewDoc.infinixui_project_id}`}
+                  href={(previewDoc.metadata as Record<string, string>)?.infinixui_editor_url || `https://infinixui.com/carousel/studio?session=${previewDoc.infinixui_project_id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"

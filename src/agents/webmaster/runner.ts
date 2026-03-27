@@ -671,7 +671,7 @@ export async function runWebmasterAgent(
           description: ctx.contentStrategy?.angle,
           file_url: ctx.carouselPdfUrl || null,
           content: ctx.posts || {},
-          metadata: { publicationMode: config.publicationMode, postStyle: config.postStyle },
+          metadata: { publicationMode: config.publicationMode, postStyle: config.postStyle, infinixui_editor_url: ctx.carouselEditorUrl || null },
           infinixui_project_id: ctx.carouselProjectId || null,
         }),
       });
