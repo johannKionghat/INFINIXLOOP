@@ -125,6 +125,18 @@ export default function DocumentsPage() {
                   </div>
                 </div>
 
+                {doc.infinixui_project_id && (
+                  <a
+                    href={(doc.metadata as Record<string, string>)?.infinixui_editor_url || `https://infinixui.com/carousel/studio?session=${doc.infinixui_project_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2 mb-3 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-700 font-medium hover:bg-purple-100 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Ouvrir et modifier sur InfinixUI
+                  </a>
+                )}
+
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-400">{formatDate(doc.created_at)}</span>
                   <div className="flex gap-1">
@@ -137,17 +149,6 @@ export default function DocumentsPage() {
                         title="Telecharger"
                       >
                         <Download className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                    {doc.infinixui_project_id && (
-                      <a
-                        href={(doc.metadata as Record<string, string>)?.infinixui_editor_url || `https://infinixui.com/carousel/studio?session=${doc.infinixui_project_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
-                        title="Editer sur InfinixUI"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     )}
                     <button
