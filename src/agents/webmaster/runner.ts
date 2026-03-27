@@ -382,11 +382,11 @@ export async function runWebmasterAgent(
     ctx.contentStrategy = await aiChatJSON<ContentStrategy>({
       model: analysisModel,
       messages: [
-        { role: "system", content: "Tu es un directeur editorial. Reponds UNIQUEMENT en JSON valide." },
+        { role: "system", content: "Tu es un directeur editorial. Reponds UNIQUEMENT en JSON valide. Sois CONCIS — chaque champ doit faire 1-2 phrases max." },
         { role: "user", content: prompt },
       ],
       temperature: 0.5,
-      max_tokens: 1000,
+      max_tokens: 2000,
     });
     return {
       output: `Strategie definie : ${ctx.contentStrategy.postType} / ${ctx.contentStrategy.tone}`,
