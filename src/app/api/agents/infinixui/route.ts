@@ -97,9 +97,11 @@ export async function POST(request: Request) {
         throw new Error(data.error || "InfinixUI: echec de la generation");
       }
 
-      // Build correct studio URL: /carousel/studio?session=ID&format=FORMAT&design=DESIGN
-      const studioUrl = normalizeUrl(data.studioUrl)
-        || `${INFINIXUI_BASE_URL}/carousel/studio?session=${data.id}&format=${payload.format || "li"}${payload.design ? `&design=${payload.design}` : ""}`;
+      // Always build the correct studio URL ourselves — deployed InfinixUI may return outdated paths
+      const sessionId = data.id;
+      const studioParams = new URLSearchParams({ session: sessionId, format: payload.format || "li" });
+      if (payload.design) studioParams.set("design", payload.design);
+      const studioUrl = `${INFINIXUI_BASE_URL}/carousel/studio?${studioParams}`;
 
       return NextResponse.json({
         project_id: data.id,
