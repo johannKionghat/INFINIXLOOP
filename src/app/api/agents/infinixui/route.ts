@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const { action, slides, project_id } = body;
 
     const apiKey = await getUserKey(user.id, "infinixui_api_key");
-    const baseUrl = (await getUserKey(user.id, "infinixui_base_url")) || "https://api.infinixui.com";
+    const baseUrl = (await getUserKey(user.id, "infinixui_base_url")) || "https://infinixui.com";
 
     if (!apiKey) {
       return NextResponse.json(
@@ -36,47 +36,95 @@ export async function POST(request: Request) {
       "Content-Type": "application/json",
     };
 
-    // Create a carousel project
+    // ── Create a carousel via InfinixUI /api/carousel/generate ──
     if (action === "create_carousel") {
-      const res = await fetch(`${baseUrl}/v1/carousels`, {
+      // The runner sends raw carousel data (from LLM).
+      // Map it to InfinixUI's expected format.
+      const carouselInput = Array.isArray(slides) ? { slides } : (slides || {});
+
+      const payload = {
+        title: carouselInput.title || "Carrousel",
+        subtitle: carouselInput.subtitle || "",
+        author: carouselInput.author || "",
+        slides: (carouselInput.slides || []).map((s: Record<string, unknown>, i: number) => ({
+          label: s.label || `POINT #${i + 1}`,
+          title: s.title || "",
+          body: s.body || s.content || s.text || "",
+          tip: s.tip || s.conseil || "",
+        })),
+        templateId: carouselInput.templateId || "carousel-minimal",
+        format: carouselInput.format || "li",
+        design: carouselInput.design || null,
+        tag: carouselInput.tag || "",
+        statTitle: carouselInput.statTitle || carouselInput.stat_title || "",
+        statNumber: carouselInput.statNumber || carouselInput.stat_number || "",
+        statLabel: carouselInput.statLabel || carouselInput.stat_label || "",
+        statSource: carouselInput.statSource || carouselInput.stat_source || "",
+        ctaTitle: carouselInput.ctaTitle || carouselInput.cta_title || "",
+        ctaBody: carouselInput.ctaBody || carouselInput.cta_body || "",
+        ctaBtn: carouselInput.ctaBtn || carouselInput.cta_btn || "",
+        ctaUrl: carouselInput.ctaUrl || carouselInput.cta_url || "",
+        highlight: carouselInput.highlight || "",
+        colorPalette: carouselInput.colorPalette || undefined,
+      };
+
+      const res = await fetch(`${baseUrl}/api/carousel/generate`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ slides, format: "linkedin", export_pdf: true }),
+        body: JSON.stringify(payload),
       });
+
       if (!res.ok) {
         const err = await res.text();
         throw new Error(`InfinixUI API error (${res.status}): ${err}`);
       }
+
       const data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.error || "InfinixUI: echec de la generation");
+      }
+
       return NextResponse.json({
-        project_id: data.project_id || data.id,
-        editor_url: data.editor_url || `${baseUrl.replace("api.", "")}/editor/${data.project_id || data.id}`,
-        pdf_url: data.pdf_url,
-        preview_url: data.preview_url,
+        project_id: data.id,
+        editor_url: data.studioUrl || `${baseUrl}/editor/${data.id}`,
+        pdf_url: data.pdfUrl || null,
+        preview_url: data.previewUrl || null,
+        slide_images: data.slideImages || [],
       });
     }
 
-    // Export existing project as PDF
+    // ── Export existing carousel as PDF via /api/carousel/export-pdf ──
     if (action === "export_pdf") {
-      const res = await fetch(`${baseUrl}/v1/carousels/${project_id}/export`, {
+      const res = await fetch(`${baseUrl}/api/carousel/export-pdf`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ format: "pdf" }),
+        body: JSON.stringify({ sessionId: project_id }),
       });
+
       if (!res.ok) {
         const err = await res.text();
         throw new Error(`InfinixUI export error (${res.status}): ${err}`);
       }
+
       const data = await res.json();
-      return NextResponse.json({ pdf_url: data.pdf_url });
+
+      if (!data.success) {
+        throw new Error(data.error || "InfinixUI: echec de l'export PDF");
+      }
+
+      return NextResponse.json({
+        pdf_url: data.pdfUrl,
+        slide_images: data.slideImages || [],
+      });
     }
 
-    // Get project details
-    if (action === "get_project") {
-      const res = await fetch(`${baseUrl}/v1/carousels/${project_id}`, { headers });
+    // ── Get available config (templates, formats, designs) ──
+    if (action === "get_config") {
+      const res = await fetch(`${baseUrl}/api/config`, { headers });
       if (!res.ok) {
         const err = await res.text();
-        throw new Error(`InfinixUI error (${res.status}): ${err}`);
+        throw new Error(`InfinixUI config error (${res.status}): ${err}`);
       }
       const data = await res.json();
       return NextResponse.json(data);

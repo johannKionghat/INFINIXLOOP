@@ -636,6 +636,7 @@ export async function runWebmasterAgent(
       if (infinixuiRes.ok && infinixuiData.project_id) {
         ctx.carouselProjectId = infinixuiData.project_id;
         ctx.carouselPdfUrl = infinixuiData.pdf_url;
+        ctx.carouselEditorUrl = infinixuiData.editor_url;
         updateSubStep(steps, "step-gen-carousel", "sub-carousel-infinixui", {
           status: "done",
           output: `Carrousel cree sur InfinixUI (ID: ${infinixuiData.project_id})`,
@@ -706,7 +707,7 @@ export async function runWebmasterAgent(
           execution_id: "carousel-archive",
           subject: `Carrousel: ${ctx.productAnalysis?.productName || config.thematicTopic}`,
           content: JSON.stringify(ctx.posts, null, 2).slice(0, 2000),
-          carousel_url: ctx.carouselProjectId ? `https://infinixui.com/editor/${ctx.carouselProjectId}` : undefined,
+          carousel_url: ctx.carouselEditorUrl || undefined,
         }),
       });
       if (notionRes.ok) {
@@ -739,7 +740,7 @@ export async function runWebmasterAgent(
           execution_id: "carousel-newsletter",
           subject: `Nouveau carrousel: ${ctx.productAnalysis?.productName || config.thematicTopic}`,
           content: linkedinContent,
-          carousel_url: ctx.carouselProjectId ? `https://infinixui.com/editor/${ctx.carouselProjectId}` : undefined,
+          carousel_url: ctx.carouselEditorUrl || undefined,
         }),
       });
       if (brevoRes.ok) {
@@ -905,7 +906,7 @@ export async function runWebmasterAgent(
           subject: `Validation requise — Agent Webmaster (${ctx.productAnalysis?.productName || config.thematicTopic || "contenu"})`,
           content: contentPreview,
           image_url: config.uploadedImageUrl || undefined,
-          carousel_url: ctx.carouselProjectId ? `https://infinixui.com/editor/${ctx.carouselProjectId}` : undefined,
+          carousel_url: ctx.carouselEditorUrl || undefined,
         }),
       });
       const notifyData = await notifyRes.json();

@@ -103,6 +103,7 @@ export interface WebmasterContext {
   sessionReport?: SessionReport;
   carouselProjectId?: string;
   carouselPdfUrl?: string;
+  carouselEditorUrl?: string;
 }
 
 export interface ProductAnalysis {

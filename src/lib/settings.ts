@@ -215,16 +215,16 @@ export const API_KEY_SECTIONS: ApiKeySection[] = [
     fields: [
       {
         key: "infinixui_api_key",
-        label: "Cle API InfinixUI",
-        placeholder: "ixui_...",
+        label: "Token JWT ou Cle API InfinixUI",
+        placeholder: "eyJ... ou sk_...",
         type: "password",
-        helpText: "Obtenez votre cle sur",
-        helpUrl: "https://infinixui.com",
+        helpText: "Token JWT obtenu via /api/auth/login ou cle API InfinixUI",
       },
       {
         key: "infinixui_base_url",
         label: "URL de l'instance InfinixUI (optionnel)",
-        placeholder: "https://api.infinixui.com",
+        placeholder: "https://infinixui.com",
+        helpText: "Laissez vide pour utiliser https://infinixui.com par defaut",
         type: "text",
       },
     ],
