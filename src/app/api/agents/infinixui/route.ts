@@ -97,9 +97,13 @@ export async function POST(request: Request) {
         throw new Error(data.error || "InfinixUI: echec de la generation");
       }
 
+      // Build correct studio URL: /carousel/studio?session=ID&format=FORMAT&design=DESIGN
+      const studioUrl = normalizeUrl(data.studioUrl)
+        || `${INFINIXUI_BASE_URL}/carousel/studio?session=${data.id}&format=${payload.format || "li"}${payload.design ? `&design=${payload.design}` : ""}`;
+
       return NextResponse.json({
         project_id: data.id,
-        editor_url: normalizeUrl(data.studioUrl) || `${INFINIXUI_BASE_URL}/editor/${data.id}`,
+        editor_url: studioUrl,
         pdf_url: normalizeUrl(data.pdfUrl),
         preview_url: normalizeUrl(data.previewUrl),
         slide_images: (data.slideImages || []).map((u: string) => normalizeUrl(u) || u),

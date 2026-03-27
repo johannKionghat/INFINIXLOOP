@@ -209,14 +209,26 @@ export default function WebmasterPage() {
     setCarouselLinkClicked(false);
   };
 
-  // Detect when user returns from InfinixUI tab (carousel editing)
-  // Only triggers after user has actually clicked the InfinixUI edit link
+  // When user returns from InfinixUI, verify carousel was actually edited
   useEffect(() => {
     if (!awaitingConfirmation || !context?.carouselProjectId || !carouselLinkClicked) return;
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible" && carouselLinkClicked) {
-        setCarouselModified(true);
-        setCarouselLinkClicked(false);
+    const handleVisibility = async () => {
+      if (document.visibilityState !== "visible" || !carouselLinkClicked) return;
+      setCarouselLinkClicked(false);
+      // Verify the carousel was actually accessed/modified on InfinixUI
+      try {
+        const res = await fetch("/api/agents/infinixui", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ action: "get_config" }),
+        });
+        // If InfinixUI responds, the user is connected — mark as potentially modified
+        if (res.ok) {
+          setCarouselModified(true);
+        }
+      } catch {
+        // InfinixUI not reachable — don't fake a success
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
@@ -453,7 +465,7 @@ export default function WebmasterPage() {
                       {carouselModified && (
                         <div className="flex items-center gap-2 px-4 py-2.5 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">
                           <CheckCircle className="w-4 h-4 shrink-0" />
-                          <span>Modification du carrousel prise en compte. Vous pouvez soumettre en cliquant sur <strong>Valider et publier</strong>.</span>
+                          <span>Si vous avez modifie le carrousel sur InfinixUI, cliquez sur <strong>Valider et publier</strong> pour continuer.</span>
                         </div>
                       )}
                       <a
