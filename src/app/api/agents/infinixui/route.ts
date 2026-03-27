@@ -42,41 +42,25 @@ export async function POST(request: Request) {
     const token = apiKey;
 
     const body = await request.json();
-    const { action, slides, project_id } = body;
+    const { action, prompt, format, project_id } = body;
 
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     };
 
-    // ── Create a carousel via InfinixUI /api/carousel/generate ──
+    // ── Create a carousel via InfinixUI (prompt-based — LLM generates the design) ──
     if (action === "create_carousel") {
-      const carouselInput = Array.isArray(slides) ? { slides } : (slides || {});
+      if (!prompt || typeof prompt !== "string") {
+        return NextResponse.json(
+          { error: "Un prompt est requis pour generer le carrousel." },
+          { status: 400 },
+        );
+      }
 
       const payload = {
-        title: carouselInput.title || "Carrousel",
-        subtitle: carouselInput.subtitle || "",
-        author: carouselInput.author || "",
-        slides: (carouselInput.slides || []).map((s: Record<string, unknown>, i: number) => ({
-          label: s.label || `POINT #${i + 1}`,
-          title: s.title || "",
-          body: s.body || s.content || s.text || "",
-          tip: s.tip || s.conseil || "",
-        })),
-        templateId: carouselInput.templateId || "carousel-minimal",
-        format: carouselInput.format || "li",
-        design: carouselInput.design || null,
-        tag: carouselInput.tag || "",
-        statTitle: carouselInput.statTitle || carouselInput.stat_title || "",
-        statNumber: carouselInput.statNumber || carouselInput.stat_number || "",
-        statLabel: carouselInput.statLabel || carouselInput.stat_label || "",
-        statSource: carouselInput.statSource || carouselInput.stat_source || "",
-        ctaTitle: carouselInput.ctaTitle || carouselInput.cta_title || "",
-        ctaBody: carouselInput.ctaBody || carouselInput.cta_body || "",
-        ctaBtn: carouselInput.ctaBtn || carouselInput.cta_btn || "",
-        ctaUrl: carouselInput.ctaUrl || carouselInput.cta_url || "",
-        highlight: carouselInput.highlight || "",
-        colorPalette: carouselInput.colorPalette || undefined,
+        prompt,
+        format: format || "li",
         userId: user.id,
       };
 
@@ -97,10 +81,10 @@ export async function POST(request: Request) {
         throw new Error(data.error || "InfinixUI: echec de la generation");
       }
 
-      // Always build the correct studio URL ourselves — deployed InfinixUI may return outdated paths
+      // Build the correct studio URL ourselves
       const sessionId = data.id;
-      const studioParams = new URLSearchParams({ session: sessionId, format: payload.format || "li" });
-      if (payload.design) studioParams.set("design", payload.design);
+      const studioParams = new URLSearchParams({ session: sessionId, format: payload.format });
+      if (data.designId) studioParams.set("design", data.designId);
       const studioUrl = `${INFINIXUI_BASE_URL}/carousel/studio?${studioParams}`;
 
       return NextResponse.json({
@@ -109,6 +93,8 @@ export async function POST(request: Request) {
         pdf_url: normalizeUrl(data.pdfUrl),
         preview_url: normalizeUrl(data.previewUrl),
         slide_images: (data.slideImages || []).map((u: string) => normalizeUrl(u) || u),
+        design_id: data.designId,
+        explanation: data.explanation,
       });
     }
 
@@ -137,8 +123,8 @@ export async function POST(request: Request) {
       });
     }
 
-    // ── Get available config (templates, formats, designs) ──
-    if (action === "get_config") {
+    // ── Get available designs, formats, templates from InfinixUI ──
+    if (action === "get_config" || action === "get_designs") {
       const res = await fetch(`${INFINIXUI_BASE_URL}/api/config`, { headers });
       if (!res.ok) {
         const err = await res.text();

@@ -25,7 +25,7 @@ import {
   buildQualityPrompt,
   buildCarouselTeaserLinkedinPrompt,
   buildCarouselTeaserInstagramPrompt,
-  buildCarouselSlidesPrompt,
+  buildCarouselPromptPrompt,
 } from "./prompts";
 
 export type StepCallback = (steps: ExecutionStep[]) => void;
@@ -409,38 +409,54 @@ export async function runWebmasterAgent(
     const genStepId = "step-gen-carousel";
     updateStep(steps, genStepId, { status: "running", startedAt: Date.now() }, onUpdate);
 
-    // Sub 1: Contenu des 7 slides
+    // Sub 0: Fetch available designs from InfinixUI (dynamic)
+    let availableDesigns: string[] = [];
+    try {
+      const configRes = await fetch("/api/agents/infinixui", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "get_designs" }),
+      });
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        availableDesigns = (configData.designs || []).map((d: { value: string }) => d.value);
+      }
+    } catch { /* use fallback designs in prompt */ }
+
+    // Sub 1: Generate carousel prompt (AI writes a rich prompt for InfinixUI)
     updateSubStep(steps, genStepId, "sub-carousel-content", {
       status: "running",
-      input: `Modele: ${generationModel} | Temp: 0.8 | 7 slides`,
-      rawInput: { model: generationModel, temperature: 0.8, maxTokens: 2800 },
+      input: `Modele: ${generationModel} | Generation du prompt carrousel pour InfinixUI`,
+      rawInput: { model: generationModel, temperature: 0.8, maxTokens: 2000, availableDesigns: availableDesigns.length },
     }, onUpdate);
     try {
-      const slidesPrompt = buildCarouselSlidesPrompt(ctx.productAnalysis!, ctx.contentStrategy!);
-      const slidesData = await aiChatJSON<Record<string, unknown>>({
+      const promptPrompt = buildCarouselPromptPrompt(ctx.productAnalysis!, ctx.contentStrategy!, availableDesigns);
+      const promptData = await aiChatJSON<{ prompt: string; suggestedDesign?: string; format?: string }>({
         model: generationModel,
         messages: [
-          { role: "system", content: "Tu es un createur de carrousels LinkedIn/Instagram. Reponds UNIQUEMENT en JSON valide." },
-          { role: "user", content: slidesPrompt },
+          { role: "system", content: "Tu es un expert en creation de prompts pour un moteur de design IA. Reponds UNIQUEMENT en JSON valide." },
+          { role: "user", content: promptPrompt },
         ],
         temperature: 0.8,
-        max_tokens: 2800,
+        max_tokens: 2000,
       });
-      (ctx.posts as Record<string, unknown>).carousel = slidesData;
+      (ctx.posts as Record<string, unknown>).carousel = promptData;
+      (ctx.posts as Record<string, unknown>).carouselPrompt = promptData.prompt;
       updateSubStep(steps, genStepId, "sub-carousel-content", {
         status: "done",
-        output: `7 slides generees — Design: ${slidesData.design || "auto"}`,
-        detail: `Titre: "${slidesData.title || ""}" | ${(slidesData.slides as unknown[])?.length || 0} slides internes`,
-        rawOutput: slidesData,
+        output: `Prompt carrousel genere — Design suggere: ${promptData.suggestedDesign || "auto"}`,
+        detail: `Prompt: "${(promptData.prompt || "").slice(0, 120)}..."`,
+        rawOutput: promptData,
       }, onUpdate);
       genSuccessCount++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur inconnue";
       updateSubStep(steps, genStepId, "sub-carousel-content", {
         status: "error",
-        output: `Erreur generation 7 slides: ${msg}`,
-        detail: `Modele: ${generationModel} | Le LLM n'a pas pu generer le contenu des slides. Verifiez le modele et les cles API.`,
-        rawOutput: { error: msg, model: generationModel, step: "carousel-slides" },
+        output: `Erreur generation prompt carrousel: ${msg}`,
+        detail: `Modele: ${generationModel} | Le LLM n'a pas pu generer le prompt. Verifiez le modele et les cles API.`,
+        rawOutput: { error: msg, model: generationModel, step: "carousel-prompt" },
       }, onUpdate);
       genErrorCount++;
     }
@@ -622,15 +638,25 @@ export async function runWebmasterAgent(
 
   // ── CAROUSEL: InfinixUI + PDF + Document + Notion + Brevo (all as substeps)
   if (config.publicationMode === "CAROUSEL") {
-    // Sub: InfinixUI Design Engine
-    updateSubStep(steps, "step-gen-carousel", "sub-carousel-infinixui", { status: "running" }, onUpdate);
+    // Sub: InfinixUI Design Engine (prompt-based — InfinixUI LLM generates the carousel)
+    updateSubStep(steps, "step-gen-carousel", "sub-carousel-infinixui", { status: "running", output: "Envoi du prompt a InfinixUI pour generation du carrousel..." }, onUpdate);
     try {
-      const carouselData = (ctx.posts as Record<string, unknown>)?.carousel || ctx.contentStrategy;
+      const carouselPrompt = (ctx.posts as Record<string, unknown>)?.carouselPrompt as string || "";
+      const carouselMeta = (ctx.posts as Record<string, unknown>)?.carousel as Record<string, unknown> || {};
+
+      if (!carouselPrompt) {
+        throw new Error("Aucun prompt carrousel genere — l'etape precedente a echoue.");
+      }
+
       const infinixuiRes = await fetch("/api/agents/infinixui", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ action: "create_carousel", slides: carouselData }),
+        body: JSON.stringify({
+          action: "create_carousel",
+          prompt: carouselPrompt,
+          format: (carouselMeta.format as string) || "li",
+        }),
       });
       const infinixuiData = await infinixuiRes.json();
       if (infinixuiRes.ok && infinixuiData.project_id) {
@@ -639,7 +665,7 @@ export async function runWebmasterAgent(
         ctx.carouselEditorUrl = infinixuiData.editor_url;
         updateSubStep(steps, "step-gen-carousel", "sub-carousel-infinixui", {
           status: "done",
-          output: `Carrousel cree sur InfinixUI (ID: ${infinixuiData.project_id})`,
+          output: `Carrousel genere par InfinixUI (ID: ${infinixuiData.project_id}) — Design: ${infinixuiData.design_id || "auto"}`,
           detail: infinixuiData.editor_url ? `Editer: ${infinixuiData.editor_url}` : undefined,
           rawOutput: infinixuiData,
         }, onUpdate);
