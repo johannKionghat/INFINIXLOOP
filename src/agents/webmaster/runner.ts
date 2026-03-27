@@ -23,6 +23,9 @@ import {
   buildTiktokPrompt,
   buildInstagramPrompt,
   buildQualityPrompt,
+  buildCarouselTeaserLinkedinPrompt,
+  buildCarouselTeaserInstagramPrompt,
+  buildCarouselSlidesPrompt,
 } from "./prompts";
 
 export type StepCallback = (steps: ExecutionStep[]) => void;
@@ -393,87 +396,209 @@ export async function runWebmasterAgent(
     };
   });
 
-  // ── MODULE 2 : Content Generation — Per-platform dedicated LLM calls ──
+  // ── MODULE 2 : Content Generation ────────────────────────────────────
   const generationModel = getModel(config, "generation");
   const activePlatforms = getActivePlatforms(config);
-  const platformIds = activePlatforms.map((p) => p.id);
-
-  const genStepId =
-    config.publicationMode === "TEXT_ONLY" ? "step-gen-text"
-    : config.publicationMode === "TEXT_MEDIA" ? "step-gen-media-posts"
-    : "step-gen-carousel";
-
-  const genPlatforms = config.publicationMode === "CAROUSEL"
-    ? activePlatforms.filter((p) => ["linkedin", "instagram"].includes(p.id))
-    : activePlatforms.filter((p) => PLATFORM_PROMPT_MAP[p.id]);
-
-  updateStep(steps, genStepId, { status: "running", startedAt: Date.now() }, onUpdate);
 
   ctx.posts = {} as GeneratedPosts;
   let genSuccessCount = 0;
   let genErrorCount = 0;
 
-  for (const platform of genPlatforms) {
-    const subId = `sub-gen-${platform.id}`;
-    const promptBuilder = PLATFORM_PROMPT_MAP[platform.id];
-    if (!promptBuilder) continue;
+  if (config.publicationMode === "CAROUSEL") {
+    // ── CAROUSEL: dedicated generation (teasers + 7 slides) ──
+    const genStepId = "step-gen-carousel";
+    updateStep(steps, genStepId, { status: "running", startedAt: Date.now() }, onUpdate);
 
-    const prompt = promptBuilder(config, ctx.productAnalysis!, ctx.contentStrategy!);
-    const temp = PLATFORM_TEMPERATURE[platform.id] || 0.7;
-    const maxTokens = PLATFORM_MAX_TOKENS[platform.id] || 2000;
-
-    updateSubStep(steps, genStepId, subId, {
+    // Sub 1: Contenu des 7 slides
+    updateSubStep(steps, genStepId, "sub-carousel-content", {
       status: "running",
-      input: `Modele: ${generationModel} | Temp: ${temp} | Style: ${config.postStyle}`,
-      rawInput: { model: generationModel, temperature: temp, maxTokens, style: config.postStyle, platform: platform.id, promptLength: prompt.length },
+      input: `Modele: ${generationModel} | Temp: 0.8 | 7 slides`,
+      rawInput: { model: generationModel, temperature: 0.8, maxTokens: 2800 },
     }, onUpdate);
-
     try {
-      const parsed = await aiChatJSON<Record<string, unknown>>({
+      const slidesPrompt = buildCarouselSlidesPrompt(ctx.productAnalysis!, ctx.contentStrategy!);
+      const slidesData = await aiChatJSON<Record<string, unknown>>({
         model: generationModel,
         messages: [
-          { role: "system", content: `Tu es un copywriter senior specialise ${platform.label}. Reponds UNIQUEMENT en JSON valide. Les posts doivent etre COMPLETS et PRETS A PUBLIER.` },
-          { role: "user", content: prompt },
+          { role: "system", content: "Tu es un createur de carrousels LinkedIn/Instagram. Reponds UNIQUEMENT en JSON valide." },
+          { role: "user", content: slidesPrompt },
         ],
-        temperature: temp,
-        max_tokens: maxTokens,
+        temperature: 0.8,
+        max_tokens: 2800,
       });
-      (ctx.posts as Record<string, unknown>)[platform.id] = parsed;
-
-      const content = (parsed.content || parsed.caption || parsed.fullCaption || "") as string;
-      const preview = typeof content === "string" ? content.slice(0, 120) + "..." : "Post genere";
-
-      updateSubStep(steps, genStepId, subId, {
+      (ctx.posts as Record<string, unknown>).carousel = slidesData;
+      updateSubStep(steps, genStepId, "sub-carousel-content", {
         status: "done",
-        output: `Post ${platform.label} genere (${typeof content === "string" ? content.length : 0} chars)`,
-        detail: preview,
-        rawOutput: parsed,
+        output: `7 slides generees — Design: ${slidesData.design || "auto"}`,
+        detail: `Titre: "${slidesData.title || ""}" | ${(slidesData.slides as unknown[])?.length || 0} slides internes`,
+        rawOutput: slidesData,
       }, onUpdate);
       genSuccessCount++;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur";
-      updateSubStep(steps, genStepId, subId, {
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      updateSubStep(steps, genStepId, "sub-carousel-content", {
         status: "error",
-        output: `Erreur ${platform.label}: ${msg}`,
-        rawOutput: { error: msg, platform: platform.id },
+        output: `Erreur generation 7 slides: ${msg}`,
+        detail: `Modele: ${generationModel} | Le LLM n'a pas pu generer le contenu des slides. Verifiez le modele et les cles API.`,
+        rawOutput: { error: msg, model: generationModel, step: "carousel-slides" },
       }, onUpdate);
       genErrorCount++;
     }
-  }
 
-  // Mark step as error if ALL sub-steps failed, partial if some failed
-  const genStatus = genErrorCount === genPlatforms.length ? "error" : "done";
-  updateStep(steps, genStepId, {
-    status: genStatus,
-    completedAt: Date.now(),
-    output: genErrorCount > 0
-      ? `${genSuccessCount}/${genPlatforms.length} posts generes. ${genErrorCount} erreur(s).`
-      : `${genSuccessCount} posts generes (appels LLM dedies par plateforme).`,
-    detail: genErrorCount > 0
-      ? `Succes: ${genPlatforms.filter((_, i) => i < genSuccessCount).map((p) => p.label).join(", ")} | Echecs: ${genErrorCount}`
-      : genPlatforms.map((p) => p.label).join(", "),
-    rawOutput: ctx.posts,
-  }, onUpdate);
+    // Sub 2: Teasers LinkedIn + Instagram
+    updateSubStep(steps, genStepId, "sub-carousel-teasers", {
+      status: "running",
+      input: `Teasers LinkedIn (0.75) + Instagram (0.85)`,
+      rawInput: { model: generationModel, platforms: ["linkedin", "instagram"] },
+    }, onUpdate);
+    let teaserErrors = 0;
+    const teaserDetails: string[] = [];
+    try {
+      // Teaser LinkedIn
+      const liPrompt = buildCarouselTeaserLinkedinPrompt(ctx.productAnalysis!, ctx.contentStrategy!);
+      const liData = await aiChatJSON<Record<string, unknown>>({
+        model: generationModel,
+        messages: [
+          { role: "system", content: "Tu es un copywriter LinkedIn. Reponds UNIQUEMENT en JSON valide." },
+          { role: "user", content: liPrompt },
+        ],
+        temperature: 0.75,
+        max_tokens: 800,
+      });
+      (ctx.posts as Record<string, unknown>).linkedin = liData;
+      teaserDetails.push(`LinkedIn: ${String(liData.content || "").length} chars`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      teaserDetails.push(`LinkedIn: ERREUR — ${msg}`);
+      teaserErrors++;
+    }
+    try {
+      // Teaser Instagram
+      const igPrompt = buildCarouselTeaserInstagramPrompt(ctx.productAnalysis!, ctx.contentStrategy!);
+      const igData = await aiChatJSON<Record<string, unknown>>({
+        model: generationModel,
+        messages: [
+          { role: "system", content: "Tu es un copywriter Instagram. Reponds UNIQUEMENT en JSON valide." },
+          { role: "user", content: igPrompt },
+        ],
+        temperature: 0.85,
+        max_tokens: 600,
+      });
+      (ctx.posts as Record<string, unknown>).instagram = igData;
+      teaserDetails.push(`Instagram: ${String(igData.fullCaption || igData.caption || "").length} chars`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      teaserDetails.push(`Instagram: ERREUR — ${msg}`);
+      teaserErrors++;
+    }
+
+    if (teaserErrors === 2) {
+      updateSubStep(steps, genStepId, "sub-carousel-teasers", {
+        status: "error",
+        output: `Echec des 2 teasers`,
+        detail: teaserDetails.join(" | "),
+        rawOutput: { errors: teaserDetails, model: generationModel },
+      }, onUpdate);
+      genErrorCount++;
+    } else if (teaserErrors === 1) {
+      updateSubStep(steps, genStepId, "sub-carousel-teasers", {
+        status: "done",
+        output: `1/2 teasers generes (1 erreur)`,
+        detail: teaserDetails.join(" | "),
+        rawOutput: { linkedin: ctx.posts?.linkedin, instagram: ctx.posts?.instagram },
+      }, onUpdate);
+      genSuccessCount++;
+    } else {
+      updateSubStep(steps, genStepId, "sub-carousel-teasers", {
+        status: "done",
+        output: `2 teasers generes (LinkedIn + Instagram)`,
+        detail: teaserDetails.join(" | "),
+        rawOutput: { linkedin: ctx.posts?.linkedin, instagram: ctx.posts?.instagram },
+      }, onUpdate);
+      genSuccessCount++;
+    }
+
+    // Update parent carousel step
+    const totalSubs = 2; // content + teasers (InfinixUI/doc/notion/brevo done after)
+    const carouselStatus = genErrorCount >= totalSubs ? "error" : "done";
+    updateStep(steps, genStepId, {
+      status: carouselStatus === "error" ? "error" : "running", // still running, substeps InfinixUI etc. follow
+      output: genErrorCount > 0
+        ? `${genSuccessCount}/${totalSubs} generations reussies. ${genErrorCount} erreur(s).`
+        : `Slides + teasers generes.`,
+      detail: teaserDetails.join(" | "),
+      rawOutput: ctx.posts,
+    }, onUpdate);
+
+  } else {
+    // ── TEXT_ONLY / TEXT_MEDIA: per-platform dedicated LLM calls ──
+    const genStepId = config.publicationMode === "TEXT_ONLY" ? "step-gen-text" : "step-gen-media-posts";
+    const genPlatforms = activePlatforms.filter((p) => PLATFORM_PROMPT_MAP[p.id]);
+
+    updateStep(steps, genStepId, { status: "running", startedAt: Date.now() }, onUpdate);
+
+    for (const platform of genPlatforms) {
+      const subId = `sub-gen-${platform.id}`;
+      const promptBuilder = PLATFORM_PROMPT_MAP[platform.id];
+      if (!promptBuilder) continue;
+
+      const prompt = promptBuilder(config, ctx.productAnalysis!, ctx.contentStrategy!);
+      const temp = PLATFORM_TEMPERATURE[platform.id] || 0.7;
+      const maxTokens = PLATFORM_MAX_TOKENS[platform.id] || 2000;
+
+      updateSubStep(steps, genStepId, subId, {
+        status: "running",
+        input: `Modele: ${generationModel} | Temp: ${temp} | Style: ${config.postStyle}`,
+        rawInput: { model: generationModel, temperature: temp, maxTokens, style: config.postStyle, platform: platform.id, promptLength: prompt.length },
+      }, onUpdate);
+
+      try {
+        const parsed = await aiChatJSON<Record<string, unknown>>({
+          model: generationModel,
+          messages: [
+            { role: "system", content: `Tu es un copywriter senior specialise ${platform.label}. Reponds UNIQUEMENT en JSON valide. Les posts doivent etre COMPLETS et PRETS A PUBLIER.` },
+            { role: "user", content: prompt },
+          ],
+          temperature: temp,
+          max_tokens: maxTokens,
+        });
+        (ctx.posts as Record<string, unknown>)[platform.id] = parsed;
+
+        const content = (parsed.content || parsed.caption || parsed.fullCaption || "") as string;
+        const preview = typeof content === "string" ? content.slice(0, 120) + "..." : "Post genere";
+
+        updateSubStep(steps, genStepId, subId, {
+          status: "done",
+          output: `Post ${platform.label} genere (${typeof content === "string" ? content.length : 0} chars)`,
+          detail: preview,
+          rawOutput: parsed,
+        }, onUpdate);
+        genSuccessCount++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Erreur inconnue";
+        updateSubStep(steps, genStepId, subId, {
+          status: "error",
+          output: `Erreur generation ${platform.label}: ${msg}`,
+          detail: `Modele: ${generationModel} | Temp: ${temp} | Le LLM n'a pas pu generer le post. Verifiez le modele et les cles API.`,
+          rawOutput: { error: msg, model: generationModel, platform: platform.id, temperature: temp, maxTokens },
+        }, onUpdate);
+        genErrorCount++;
+      }
+    }
+
+    const genStatus = genErrorCount === genPlatforms.length ? "error" : "done";
+    updateStep(steps, genStepId, {
+      status: genStatus,
+      completedAt: Date.now(),
+      output: genErrorCount > 0
+        ? `${genSuccessCount}/${genPlatforms.length} posts generes. ${genErrorCount} erreur(s).`
+        : `${genSuccessCount} posts generes (appels LLM dedies par plateforme).`,
+      detail: genErrorCount > 0
+        ? `Succes: ${genPlatforms.filter((p) => (ctx.posts as Record<string, unknown>)[p.id]).map((p) => p.label).join(", ")} | Echecs: ${genPlatforms.filter((p) => !(ctx.posts as Record<string, unknown>)[p.id]).map((p) => p.label).join(", ")}`
+        : genPlatforms.map((p) => p.label).join(", "),
+      rawOutput: ctx.posts,
+    }, onUpdate);
+  }
 
   // ── TEXT_MEDIA: Image generation step ──────────────────────────────────
   if (config.publicationMode === "TEXT_MEDIA") {
@@ -633,6 +758,22 @@ export async function runWebmasterAgent(
         status: "error", output: msg, rawOutput: { error: msg },
       }, onUpdate);
     }
+  }
+
+  // Finalize carousel step if applicable
+  if (config.publicationMode === "CAROUSEL") {
+    const carouselStep = steps.find((s) => s.id === "step-gen-carousel");
+    const carouselErrors = carouselStep?.children?.filter((c) => c.status === "error").length || 0;
+    const carouselDone = carouselStep?.children?.filter((c) => c.status === "done").length || 0;
+    const carouselTotal = carouselStep?.children?.length || 0;
+    updateStep(steps, "step-gen-carousel", {
+      status: carouselErrors === carouselTotal ? "error" : "done",
+      completedAt: Date.now(),
+      output: carouselErrors > 0
+        ? `${carouselDone}/${carouselTotal} etapes reussies. ${carouselErrors} erreur(s).`
+        : `Carrousel complet: slides + teasers + design + archivage.`,
+      detail: carouselStep?.children?.map((c) => `${c.label}: ${c.status}`).join(" | "),
+    }, onUpdate);
   }
 
   // ── MODULE 3 : Quality ────────────────────────────────────────────────

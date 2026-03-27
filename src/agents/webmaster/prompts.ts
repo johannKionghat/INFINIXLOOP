@@ -547,6 +547,90 @@ Reponds UNIQUEMENT en JSON valide :
 
 // ── Quality Prompt ───────────────────────────────────────────────────────────
 
+// ── Carousel Prompts ────────────────────────────────────────────────────────
+
+export function buildCarouselTeaserLinkedinPrompt(
+  analysis: ProductAnalysis,
+  strategy: ContentStrategy,
+): string {
+  return `Sujet : ${analysis.productName}
+Audience : ${analysis.targetAudience}
+Voix : ${strategy.tone}
+Mode CAROUSEL : teaser 80-120 mots qui donne envie de voir le carrousel.
+
+Teaser : ${strategy.carouselTeaser}
+Valeur : ${strategy.coreValue}
+${analysis.landingPageUrl ? `Lien : ${analysis.landingPageUrl}` : ""}
+
+JSON : {"content":"teaser LinkedIn 80-120 mots","hashtags":["#tag1","#tag2","#tag3"],"wordCount":0}`;
+}
+
+export function buildCarouselTeaserInstagramPrompt(
+  analysis: ProductAnalysis,
+  strategy: ContentStrategy,
+): string {
+  return `Sujet : ${analysis.productName}
+Audience : ${analysis.targetAudience}
+Mode CAROUSEL : caption teaser 60-100 mots.
+
+Teaser : ${strategy.carouselTeaser}
+"lien en bio" · 8-12 hashtags
+
+JSON : {"caption":"teaser Instagram 60-100 mots","hashtags":["#tag1"],"fullCaption":"caption + hashtags"}`;
+}
+
+export function buildCarouselSlidesPrompt(
+  analysis: ProductAnalysis,
+  strategy: ContentStrategy,
+): string {
+  const year = new Date().getFullYear();
+  return `Createur de carrousels LinkedIn/Instagram.
+
+DATE : ${year} — utilise UNIQUEMENT l'annee en cours pour stats et sources.
+
+Sujet : ${analysis.productName}
+Auteur : ${analysis.authorName}, ${analysis.authorExpertise}
+Audience : ${analysis.targetAudience}
+Secteur : ${analysis.sector}
+Angle : ${strategy.angle}
+Valeur : ${strategy.coreValue}
+Preuve : ${strategy.proofElement}
+
+STRUCTURE 7 SLIDES :
+- Slide 1 : COUVERTURE — titre (max 8 mots) + sous-titre
+- Slides 2-5 : 4 points cles (titre + corps 25 mots max + conseil actionnable)
+- Slide 6 : STAT CHOC — chiffre fort + contexte + source AVEC ANNEE ACTUELLE
+- Slide 7 : CTA naturel
+
+DESIGN : choisis librement parmi editorial, glass, tech, newspaper, brutalist, cyberpunk, neon, duotone, minimalist, pastel, gradient, retro, organic, sketch — selon ce qui convient au sujet.
+
+JSON :
+{
+  "design": "un des 15 designs",
+  "designRationale": "pourquoi ce design",
+  "title": "titre couverture (max 8 mots)",
+  "subtitle": "sous-titre (max 12 mots)",
+  "author": "${analysis.authorName} • ${analysis.companyName}",
+  "url": "${analysis.landingPageUrl || ""}",
+  "slides": [
+    { "num": "02", "title": "...", "body": "...", "tip": "..." },
+    { "num": "03", "title": "...", "body": "...", "tip": "..." },
+    { "num": "04", "title": "...", "body": "...", "tip": "..." },
+    { "num": "05", "title": "...", "body": "...", "tip": "..." }
+  ],
+  "stat_number": "XX%",
+  "stat_label": "description 1-2 lignes",
+  "stat_source": "source — ${year} (ex: McKinsey — ${year})",
+  "cta_title": "titre CTA (max 8 mots)",
+  "cta_body": "description valeur (max 20 mots)",
+  "cta_btn": "${analysis.landingPageUrl ? analysis.landingPageUrl + "?utm_source=carousel&utm_medium=social&utm_campaign=webmaster" : ""}",
+  "colorPalette": { "primary": "#hex", "secondary": "#hex", "accent": "#hex", "background": "#hex" },
+  "estimatedEngagement": "faible|moyen|eleve — raison"
+}`;
+}
+
+// ── Quality Prompt ──────────────────────────────────────────────────────────
+
 export function buildQualityPrompt(
   config: WebmasterConfig,
   posts: Record<string, unknown>,
