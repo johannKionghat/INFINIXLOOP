@@ -165,8 +165,6 @@ export function buildExecutionSteps(config: WebmasterConfig): ExecutionStep[] {
         { id: "sub-carousel-teasers", label: "Teasers LinkedIn + Instagram", status: "pending" },
         { id: "sub-carousel-infinixui", label: "Design InfinixUI + export PDF", status: "pending" },
         { id: "sub-carousel-document", label: "Sauvegarde dans Mes Documents", status: "pending" },
-        { id: "sub-carousel-notion", label: "Archivage Notion", status: "pending" },
-        { id: "sub-carousel-brevo", label: "Newsletter Brevo", status: "pending" },
       ],
     });
   }

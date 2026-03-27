@@ -695,70 +695,9 @@ export async function runWebmasterAgent(
       }, onUpdate);
     }
 
-    // Sub: Notion archiving
-    updateSubStep(steps, "step-gen-carousel", "sub-carousel-notion", { status: "running" }, onUpdate);
-    try {
-      const notionRes = await fetch("/api/agents/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          channel: "notion",
-          execution_id: "carousel-archive",
-          subject: `Carrousel: ${ctx.productAnalysis?.productName || config.thematicTopic}`,
-          content: JSON.stringify(ctx.posts, null, 2).slice(0, 2000),
-          carousel_url: ctx.carouselEditorUrl || undefined,
-        }),
-      });
-      if (notionRes.ok) {
-        updateSubStep(steps, "step-gen-carousel", "sub-carousel-notion", {
-          status: "done", output: "Archive dans Notion", rawOutput: await notionRes.json(),
-        }, onUpdate);
-      } else {
-        const nd = await notionRes.json();
-        updateSubStep(steps, "step-gen-carousel", "sub-carousel-notion", {
-          status: "error", output: nd.error || "Erreur Notion — verifiez vos cles dans Parametres", rawOutput: nd,
-        }, onUpdate);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur";
-      updateSubStep(steps, "step-gen-carousel", "sub-carousel-notion", {
-        status: "error", output: msg, rawOutput: { error: msg },
-      }, onUpdate);
-    }
-
-    // Sub: Brevo newsletter
-    updateSubStep(steps, "step-gen-carousel", "sub-carousel-brevo", { status: "running" }, onUpdate);
-    try {
-      const linkedinContent = ctx.posts?.linkedin?.content || "";
-      const brevoRes = await fetch("/api/agents/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          channel: "email",
-          execution_id: "carousel-newsletter",
-          subject: `Nouveau carrousel: ${ctx.productAnalysis?.productName || config.thematicTopic}`,
-          content: linkedinContent,
-          carousel_url: ctx.carouselEditorUrl || undefined,
-        }),
-      });
-      if (brevoRes.ok) {
-        updateSubStep(steps, "step-gen-carousel", "sub-carousel-brevo", {
-          status: "done", output: "Newsletter envoyee via Brevo", rawOutput: await brevoRes.json(),
-        }, onUpdate);
-      } else {
-        const bd = await brevoRes.json();
-        updateSubStep(steps, "step-gen-carousel", "sub-carousel-brevo", {
-          status: "error", output: bd.error || "Erreur Brevo — verifiez vos cles dans Parametres", rawOutput: bd,
-        }, onUpdate);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur";
-      updateSubStep(steps, "step-gen-carousel", "sub-carousel-brevo", {
-        status: "error", output: msg, rawOutput: { error: msg },
-      }, onUpdate);
-    }
+    // Notion archiving and Brevo newsletter are handled by the confirmation
+    // step (Module 3B) via the user's chosen confirmationChannel.
+    // No separate hardcoded calls here.
   }
 
   // Finalize carousel step if applicable

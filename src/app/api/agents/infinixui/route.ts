@@ -3,6 +3,16 @@ import { createClient } from "@/lib/supabase/server";
 
 const INFINIXUI_BASE_URL = process.env.INFINIXUI_BASE_URL || "https://infinixui.com";
 
+/** Replace any localhost/127.0.0.1 origin in a URL with INFINIXUI_BASE_URL */
+function normalizeUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return url.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/, INFINIXUI_BASE_URL);
+  } catch {
+    return url;
+  }
+}
+
 async function getUserKey(userId: string, keyName: string): Promise<string | null> {
   const supabase = await createClient();
   const { data } = await supabase
@@ -89,10 +99,10 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         project_id: data.id,
-        editor_url: data.studioUrl || `${INFINIXUI_BASE_URL}/editor/${data.id}`,
-        pdf_url: data.pdfUrl || null,
-        preview_url: data.previewUrl || null,
-        slide_images: data.slideImages || [],
+        editor_url: normalizeUrl(data.studioUrl) || `${INFINIXUI_BASE_URL}/editor/${data.id}`,
+        pdf_url: normalizeUrl(data.pdfUrl),
+        preview_url: normalizeUrl(data.previewUrl),
+        slide_images: (data.slideImages || []).map((u: string) => normalizeUrl(u) || u),
       });
     }
 
@@ -116,8 +126,8 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({
-        pdf_url: data.pdfUrl,
-        slide_images: data.slideImages || [],
+        pdf_url: normalizeUrl(data.pdfUrl),
+        slide_images: (data.slideImages || []).map((u: string) => normalizeUrl(u) || u),
       });
     }
 

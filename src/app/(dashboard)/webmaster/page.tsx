@@ -78,6 +78,7 @@ export default function WebmasterPage() {
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [editingPosts, setEditingPosts] = useState<Record<string, string>>({});
+  const [carouselModified, setCarouselModified] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ model: true, mode: true, source: true, style: true, platforms: true });
   const stepsRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -122,6 +123,7 @@ export default function WebmasterPage() {
       const posts = result.context.posts || {};
       const edits: Record<string, string> = {};
       for (const [key, val] of Object.entries(posts)) {
+        if (key === "carousel") continue;
         const v = val as Record<string, unknown>;
         edits[key] = String(v?.content || v?.fullCaption || "");
       }
@@ -202,7 +204,20 @@ export default function WebmasterPage() {
     setAwaitingConfirmation(false);
     setExecutionId(null);
     setEditingPosts({});
+    setCarouselModified(false);
   };
+
+  // Detect when user returns from InfinixUI tab (carousel editing)
+  useEffect(() => {
+    if (!awaitingConfirmation || !context?.carouselProjectId) return;
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        setCarouselModified(true);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [awaitingConfirmation, context?.carouselProjectId]);
 
   useEffect(() => {
     if (stepsRef.current) {
@@ -429,6 +444,26 @@ export default function WebmasterPage() {
                   <span className="text-xs text-amber-600">Modifiez le contenu si necessaire, puis validez ou annulez</span>
                 </div>
                 <div className="p-5 flex flex-col gap-4">
+                  {context.carouselProjectId && (
+                    <div className="flex flex-col gap-3">
+                      {carouselModified && (
+                        <div className="flex items-center gap-2 px-4 py-2.5 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">
+                          <CheckCircle className="w-4 h-4 shrink-0" />
+                          <span>Modification du carrousel prise en compte. Vous pouvez soumettre en cliquant sur <strong>Valider et publier</strong>.</span>
+                        </div>
+                      )}
+                      <a
+                        href={context.carouselEditorUrl || `https://infinixui.com/editor/${context.carouselProjectId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 border border-purple-200 rounded-xl text-sm text-purple-700 font-medium hover:bg-purple-100 transition-colors w-fit"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        Modifier le carrousel sur InfinixUI
+                      </a>
+                    </div>
+                  )}
+
                   {Object.entries(editingPosts).map(([platform, content]) => (
                     <div key={platform}>
                       <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5 block">
@@ -442,18 +477,6 @@ export default function WebmasterPage() {
                       />
                     </div>
                   ))}
-
-                  {context.carouselProjectId && (
-                    <a
-                      href={`https://infinixui.com/editor/${context.carouselProjectId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 border border-purple-200 rounded-xl text-sm text-purple-700 font-medium hover:bg-purple-100 transition-colors w-fit"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                      Modifier le carrousel sur InfinixUI
-                    </a>
-                  )}
 
                   <div className="flex items-center gap-3 pt-2">
                     <button
