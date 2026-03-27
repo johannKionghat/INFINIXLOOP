@@ -7,6 +7,8 @@ import type {
   ContentStrategy,
   GeneratedPosts,
   QualityReport,
+  RunResult,
+  UserModifications,
 } from "./types";
 import { buildExecutionSteps, getActivePlatforms } from "./steps";
 import { aiChatJSON } from "@/lib/ai";
@@ -164,7 +166,7 @@ const PLATFORM_MAX_TOKENS: Record<string, number> = {
 export async function runWebmasterAgent(
   config: WebmasterConfig,
   onUpdate: StepCallback,
-): Promise<WebmasterContext> {
+): Promise<RunResult> {
   const steps = buildExecutionSteps(config);
   onUpdate([...steps]);
 
@@ -493,23 +495,144 @@ export async function runWebmasterAgent(
     });
   }
 
-  // ── CAROUSEL: Additional steps ─────────────────────────────────────────
+  // ── CAROUSEL: InfinixUI + PDF + Document + Notion + Brevo (all as substeps)
   if (config.publicationMode === "CAROUSEL") {
-    await runStep(steps, "step-infinixui", onUpdate, async () => ({
-      output: "Carrousel genere par InfinixUI.",
-      detail: "Integration InfinixUI Design Engine en cours de developpement.",
-      rawOutput: { status: "pending_integration", engine: "InfinixUI" },
-    }));
-    await runStep(steps, "step-notion", onUpdate, async () => ({
-      output: "Archivage Notion.",
-      detail: "Necessite la cle API Notion dans les parametres.",
-      rawOutput: { status: "pending_integration", service: "Notion" },
-    }));
-    await runStep(steps, "step-brevo", onUpdate, async () => ({
-      output: "Newsletter Brevo.",
-      detail: "Necessite la configuration Brevo dans les parametres.",
-      rawOutput: { status: "pending_integration", service: "Brevo" },
-    }));
+    // Sub: InfinixUI Design Engine
+    updateSubStep(steps, "step-gen-carousel", "sub-carousel-infinixui", { status: "running" }, onUpdate);
+    try {
+      const carouselData = (ctx.posts as Record<string, unknown>)?.carousel || ctx.contentStrategy;
+      const infinixuiRes = await fetch("/api/agents/infinixui", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "create_carousel", slides: carouselData }),
+      });
+      const infinixuiData = await infinixuiRes.json();
+      if (infinixuiRes.ok && infinixuiData.project_id) {
+        ctx.carouselProjectId = infinixuiData.project_id;
+        ctx.carouselPdfUrl = infinixuiData.pdf_url;
+        updateSubStep(steps, "step-gen-carousel", "sub-carousel-infinixui", {
+          status: "done",
+          output: `Carrousel cree sur InfinixUI (ID: ${infinixuiData.project_id})`,
+          detail: infinixuiData.editor_url ? `Editer: ${infinixuiData.editor_url}` : undefined,
+          rawOutput: infinixuiData,
+        }, onUpdate);
+      } else {
+        updateSubStep(steps, "step-gen-carousel", "sub-carousel-infinixui", {
+          status: "error",
+          output: infinixuiData.error || "Erreur InfinixUI — verifiez votre cle API dans Parametres",
+          rawOutput: infinixuiData,
+        }, onUpdate);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      updateSubStep(steps, "step-gen-carousel", "sub-carousel-infinixui", {
+        status: "error", output: `Erreur InfinixUI: ${msg}`, rawOutput: { error: msg },
+      }, onUpdate);
+    }
+
+    // Sub: Save to Mes Documents
+    updateSubStep(steps, "step-gen-carousel", "sub-carousel-document", { status: "running" }, onUpdate);
+    try {
+      const docRes = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          agent_id: "webmaster",
+          type: "carousel",
+          title: `Carrousel — ${ctx.productAnalysis?.productName || config.thematicTopic || "Sans titre"}`,
+          description: ctx.contentStrategy?.angle,
+          file_url: ctx.carouselPdfUrl || null,
+          content: ctx.posts || {},
+          metadata: { publicationMode: config.publicationMode, postStyle: config.postStyle },
+          infinixui_project_id: ctx.carouselProjectId || null,
+        }),
+      });
+      const docData = await docRes.json();
+      if (docRes.ok) {
+        updateSubStep(steps, "step-gen-carousel", "sub-carousel-document", {
+          status: "done",
+          output: "Document sauvegarde dans Mes Documents",
+          detail: ctx.carouselPdfUrl ? "PDF disponible au telechargement" : "Contenu JSON sauvegarde",
+          rawOutput: docData,
+        }, onUpdate);
+      } else {
+        updateSubStep(steps, "step-gen-carousel", "sub-carousel-document", {
+          status: "error", output: docData.error || "Erreur sauvegarde document", rawOutput: docData,
+        }, onUpdate);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      updateSubStep(steps, "step-gen-carousel", "sub-carousel-document", {
+        status: "error", output: msg, rawOutput: { error: msg },
+      }, onUpdate);
+    }
+
+    // Sub: Notion archiving
+    updateSubStep(steps, "step-gen-carousel", "sub-carousel-notion", { status: "running" }, onUpdate);
+    try {
+      const notionRes = await fetch("/api/agents/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          channel: "notion",
+          execution_id: "carousel-archive",
+          subject: `Carrousel: ${ctx.productAnalysis?.productName || config.thematicTopic}`,
+          content: JSON.stringify(ctx.posts, null, 2).slice(0, 2000),
+          carousel_url: ctx.carouselProjectId ? `https://infinixui.com/editor/${ctx.carouselProjectId}` : undefined,
+        }),
+      });
+      if (notionRes.ok) {
+        updateSubStep(steps, "step-gen-carousel", "sub-carousel-notion", {
+          status: "done", output: "Archive dans Notion", rawOutput: await notionRes.json(),
+        }, onUpdate);
+      } else {
+        const nd = await notionRes.json();
+        updateSubStep(steps, "step-gen-carousel", "sub-carousel-notion", {
+          status: "error", output: nd.error || "Erreur Notion — verifiez vos cles dans Parametres", rawOutput: nd,
+        }, onUpdate);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      updateSubStep(steps, "step-gen-carousel", "sub-carousel-notion", {
+        status: "error", output: msg, rawOutput: { error: msg },
+      }, onUpdate);
+    }
+
+    // Sub: Brevo newsletter
+    updateSubStep(steps, "step-gen-carousel", "sub-carousel-brevo", { status: "running" }, onUpdate);
+    try {
+      const linkedinContent = ctx.posts?.linkedin?.content || "";
+      const brevoRes = await fetch("/api/agents/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          channel: "email",
+          execution_id: "carousel-newsletter",
+          subject: `Nouveau carrousel: ${ctx.productAnalysis?.productName || config.thematicTopic}`,
+          content: linkedinContent,
+          carousel_url: ctx.carouselProjectId ? `https://infinixui.com/editor/${ctx.carouselProjectId}` : undefined,
+        }),
+      });
+      if (brevoRes.ok) {
+        updateSubStep(steps, "step-gen-carousel", "sub-carousel-brevo", {
+          status: "done", output: "Newsletter envoyee via Brevo", rawOutput: await brevoRes.json(),
+        }, onUpdate);
+      } else {
+        const bd = await brevoRes.json();
+        updateSubStep(steps, "step-gen-carousel", "sub-carousel-brevo", {
+          status: "error", output: bd.error || "Erreur Brevo — verifiez vos cles dans Parametres", rawOutput: bd,
+        }, onUpdate);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      updateSubStep(steps, "step-gen-carousel", "sub-carousel-brevo", {
+        status: "error", output: msg, rawOutput: { error: msg },
+      }, onUpdate);
+    }
   }
 
   // ── MODULE 3 : Quality ────────────────────────────────────────────────
@@ -597,11 +720,195 @@ export async function runWebmasterAgent(
     }
   }
 
+  // ── MODULE 3B : Confirmation (if enabled) ────────────────────────────
+  if (config.requireConfirmation) {
+    updateStep(steps, "step-confirmation", { status: "running", startedAt: Date.now() }, onUpdate);
+
+    // Send notification
+    updateSubStep(steps, "step-confirmation", "sub-confirm-notify", { status: "running" }, onUpdate);
+    let executionId = "";
+    try {
+      // Build content preview for notification
+      const contentPreview = Object.entries(ctx.posts || {})
+        .map(([platform, data]) => {
+          const content = (data as Record<string, unknown>)?.content || (data as Record<string, unknown>)?.fullCaption || "";
+          return `--- ${platform.toUpperCase()} ---\n${String(content).slice(0, 500)}`;
+        })
+        .join("\n\n");
+
+      // Save execution state to DB
+      const execRes = await fetch("/api/agents/executions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "create",
+          agent_id: "webmaster",
+          context: ctx,
+          generated_content: ctx.posts,
+          steps: steps.map((s) => ({ id: s.id, status: s.status, label: s.label })),
+          confirmation_channel: config.confirmationChannel,
+        }),
+      });
+      const execData = await execRes.json();
+      executionId = execData.execution?.id || "";
+
+      // Send notification via chosen channel
+      const notifyRes = await fetch("/api/agents/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          channel: config.confirmationChannel,
+          execution_id: executionId,
+          subject: `Validation requise — Agent Webmaster (${ctx.productAnalysis?.productName || config.thematicTopic || "contenu"})`,
+          content: contentPreview,
+          image_url: config.uploadedImageUrl || undefined,
+          carousel_url: ctx.carouselProjectId ? `https://infinixui.com/editor/${ctx.carouselProjectId}` : undefined,
+        }),
+      });
+      const notifyData = await notifyRes.json();
+
+      if (notifyRes.ok) {
+        updateSubStep(steps, "step-confirmation", "sub-confirm-notify", {
+          status: "done",
+          output: `Notification envoyee via ${config.confirmationChannel}`,
+          rawOutput: notifyData,
+        }, onUpdate);
+      } else {
+        updateSubStep(steps, "step-confirmation", "sub-confirm-notify", {
+          status: "error",
+          output: notifyData.error || `Erreur envoi notification ${config.confirmationChannel}`,
+          rawOutput: notifyData,
+        }, onUpdate);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      updateSubStep(steps, "step-confirmation", "sub-confirm-notify", {
+        status: "error", output: msg, rawOutput: { error: msg },
+      }, onUpdate);
+    }
+
+    // Mark waiting
+    updateSubStep(steps, "step-confirmation", "sub-confirm-wait", {
+      status: "running",
+      output: "En attente de votre validation...",
+      detail: "Validez ou modifiez le contenu, puis confirmez pour lancer la publication.",
+    }, onUpdate);
+
+    updateStep(steps, "step-confirmation", {
+      output: `Notification envoyee. En attente de validation.`,
+      detail: `Canal: ${config.confirmationChannel} | Execution: ${executionId}`,
+    }, onUpdate);
+
+    // Return early — the webmaster page will show the confirmation UI
+    return {
+      context: ctx,
+      status: "awaiting_confirmation",
+      executionId,
+      steps,
+    };
+  }
+
   // ── MODULE 4 : Publication ────────────────────────────────────────────
-  updateStep(steps, "step-publish", { status: "running", startedAt: Date.now() }, onUpdate);
-  const pubStep = steps.find((s) => s.id === "step-publish");
+  return await runPublicationPhase(config, ctx, steps, onUpdate);
+}
+
+// ── Resume after confirmation ───────────────────────────────────────────────
+
+export async function resumeWebmasterAgent(
+  config: WebmasterConfig,
+  ctx: WebmasterContext,
+  steps: ExecutionStep[],
+  executionId: string,
+  modifications: UserModifications | null,
+  onUpdate: StepCallback,
+): Promise<RunResult> {
+  // Apply user modifications
+  if (modifications) {
+    if (modifications.posts) {
+      ctx.posts = { ...ctx.posts, ...modifications.posts } as GeneratedPosts;
+    }
+    if (modifications.imageUrl) {
+      config.uploadedImageUrl = modifications.imageUrl;
+    }
+  }
+
+  // Mark confirmation step as done
+  updateSubStep(steps, "step-confirmation", "sub-confirm-wait", {
+    status: "done",
+    output: modifications ? "Valide avec modifications" : "Valide sans modification",
+    detail: modifications ? "Le contenu modifie par l'utilisateur sera utilise pour la publication" : undefined,
+  }, onUpdate);
+  updateStep(steps, "step-confirmation", {
+    status: "done",
+    completedAt: Date.now(),
+    output: "Validation confirmee par l'utilisateur",
+  }, onUpdate);
+
+  // Mark execution as confirmed
+  try {
+    await fetch("/api/agents/executions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        action: "complete",
+        id: executionId,
+      }),
+    });
+  } catch { /* silent */ }
+
+  return await runPublicationPhase(config, ctx, steps, onUpdate);
+}
+
+// ── Cancel execution ────────────────────────────────────────────────────────
+
+export async function cancelWebmasterAgent(
+  steps: ExecutionStep[],
+  executionId: string,
+  onUpdate: StepCallback,
+): Promise<void> {
+  updateSubStep(steps, "step-confirmation", "sub-confirm-wait", {
+    status: "error",
+    output: "Annule par l'utilisateur",
+  }, onUpdate);
+  updateStep(steps, "step-confirmation", {
+    status: "error",
+    completedAt: Date.now(),
+    output: "Execution annulee par l'utilisateur",
+  }, onUpdate);
+
+  // Mark remaining steps as skipped
+  for (const step of steps) {
+    if (step.status === "pending") {
+      updateStep(steps, step.id, { status: "skipped" }, onUpdate);
+    }
+  }
+
+  try {
+    await fetch("/api/agents/executions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ action: "cancel", id: executionId }),
+    });
+  } catch { /* silent */ }
+}
+
+// ── Phase 2: Publication + Report ───────────────────────────────────────────
+
+async function runPublicationPhase(
+  config: WebmasterConfig,
+  ctx: WebmasterContext,
+  steps: ExecutionStep[],
+  onUpdate: StepCallback,
+): Promise<RunResult> {
   const publishedPlatforms: string[] = [];
   const failedPlatforms: string[] = [];
+
+  updateStep(steps, "step-publish", { status: "running", startedAt: Date.now() }, onUpdate);
+  const pubStep = steps.find((s) => s.id === "step-publish");
 
   if (pubStep?.children) {
     for (const sub of pubStep.children) {
@@ -791,5 +1098,5 @@ export async function runWebmasterAgent(
     };
   });
 
-  return ctx;
+  return { context: ctx, status: "completed", steps };
 }

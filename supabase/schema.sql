@@ -132,6 +132,47 @@ alter table public.user_api_keys enable row level security;
 create policy "Users can CRUD own api keys" on public.user_api_keys
   for all using (auth.uid() = user_id);
 
+-- Documents (generated files: carousels, PDFs, images)
+create table if not exists public.documents (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  agent_id text not null,
+  type text not null check (type in ('carousel', 'pdf', 'image', 'report')),
+  title text not null,
+  description text,
+  file_url text,
+  content jsonb default '{}',
+  metadata jsonb default '{}',
+  infinixui_project_id text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table public.documents enable row level security;
+create policy "Users can CRUD own documents" on public.documents
+  for all using (auth.uid() = user_id);
+
+-- Agent executions (for pause/resume confirmation flow)
+create table if not exists public.agent_executions (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  agent_id text not null,
+  status text not null default 'running' check (status in ('running', 'awaiting_confirmation', 'confirmed', 'cancelled', 'completed', 'error')),
+  context jsonb default '{}',
+  generated_content jsonb default '{}',
+  steps jsonb default '[]',
+  confirmation_channel text check (confirmation_channel in ('email', 'slack', 'notion')),
+  confirmed_at timestamptz,
+  cancelled_at timestamptz,
+  user_modifications jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table public.agent_executions enable row level security;
+create policy "Users can CRUD own executions" on public.agent_executions
+  for all using (auth.uid() = user_id);
+
 -- Email confirmation tokens
 create table if not exists public.email_confirmations (
   id uuid default gen_random_uuid() primary key,
@@ -168,3 +209,7 @@ create index if not exists idx_analytics_user on public.analytics_events(user_id
 create index if not exists idx_analytics_agent on public.analytics_events(agent_id);
 create index if not exists idx_password_resets_token on public.password_resets(token);
 create index if not exists idx_password_resets_email on public.password_resets(email);
+create index if not exists idx_documents_user on public.documents(user_id);
+create index if not exists idx_documents_type on public.documents(type);
+create index if not exists idx_agent_executions_user on public.agent_executions(user_id);
+create index if not exists idx_agent_executions_status on public.agent_executions(status);

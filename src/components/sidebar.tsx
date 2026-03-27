@@ -17,6 +17,7 @@ import {
   ExternalLink,
   LogOut,
   Globe,
+  FolderOpen,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
       { href: "/agents", label: "Agents", icon: Users },
       { href: "/webmaster", label: "Webmaster", icon: Globe },
       { href: "/outputs", label: "Resultats", icon: FileText },
+      { href: "/documents", label: "Mes Documents", icon: FolderOpen },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/settings", label: "Parametres", icon: Settings },
     ],

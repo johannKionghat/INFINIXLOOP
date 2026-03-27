@@ -46,6 +46,10 @@ export interface WebmasterConfig {
   publishWhatsappBusiness: boolean;
   publishSlack: boolean;
 
+  // Confirmation
+  requireConfirmation: boolean;
+  confirmationChannel: "email" | "slack" | "notion";
+
   // Dry run
   dryRun: boolean;
 }
@@ -97,6 +101,8 @@ export interface WebmasterContext {
   qualityReport?: QualityReport;
   publicationResults?: PublicationResults;
   sessionReport?: SessionReport;
+  carouselProjectId?: string;
+  carouselPdfUrl?: string;
 }
 
 export interface ProductAnalysis {
@@ -162,6 +168,19 @@ export interface PublicationResults {
   whatsappGroup?: { success: boolean; error?: string };
   whatsappBusiness?: { success: boolean; error?: string };
   slack?: { success: boolean; error?: string };
+}
+
+export interface RunResult {
+  context: WebmasterContext;
+  status: "completed" | "awaiting_confirmation";
+  executionId?: string;
+  steps: ExecutionStep[];
+}
+
+export interface UserModifications {
+  posts?: Partial<GeneratedPosts>;
+  imageUrl?: string;
+  carouselContent?: unknown;
 }
 
 export interface SessionReport {

@@ -206,6 +206,30 @@ export const API_KEY_SECTIONS: ApiKeySection[] = [
     ],
   },
 
+  // ── Design ──────────────────────────────────────────────────────────────────
+  {
+    id: "infinixui",
+    title: "InfinixUI (Design Engine)",
+    icon: "Layers",
+    description: "Connexion a InfinixUI pour la generation de carrousels visuels et l'export PDF",
+    fields: [
+      {
+        key: "infinixui_api_key",
+        label: "Cle API InfinixUI",
+        placeholder: "ixui_...",
+        type: "password",
+        helpText: "Obtenez votre cle sur",
+        helpUrl: "https://infinixui.com",
+      },
+      {
+        key: "infinixui_base_url",
+        label: "URL de l'instance InfinixUI (optionnel)",
+        placeholder: "https://api.infinixui.com",
+        type: "text",
+      },
+    ],
+  },
+
   // ── Notifications ─────────────────────────────────────────────────────────
   {
     id: "slack",
@@ -249,9 +273,9 @@ export const API_KEY_SECTIONS: ApiKeySection[] = [
   // ── Email ─────────────────────────────────────────────────────────────────
   {
     id: "brevo",
-    title: "Brevo (Newsletter)",
+    title: "Brevo (Email & Notifications)",
     icon: "Mail",
-    description: "Envoi automatique de newsletters via Brevo (ex-Sendinblue)",
+    description: "Envoi de newsletters et notifications de validation via Brevo (ex-Sendinblue)",
     fields: [
       {
         key: "brevo_api_key",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Globe, Play, RotateCcw, ChevronDown, ChevronRight, Settings, Share2, FileText, Layers, Palette, Database, ImageIcon, Brain, Loader2, Check } from "lucide-react";
+import { Globe, Play, RotateCcw, ChevronDown, ChevronRight, Settings, Share2, FileText, Layers, Palette, Database, ImageIcon, Brain, Loader2, Check, CheckCircle, XCircle, Edit3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExecutionStepsView } from "@/components/execution-steps";
 import {
@@ -9,8 +9,8 @@ import {
   CONFIG_SECTIONS,
   getDefaultConfig,
 } from "@/agents/webmaster/config";
-import { runWebmasterAgent } from "@/agents/webmaster/runner";
-import type { ExecutionStep, WebmasterConfig, WebmasterContext } from "@/agents/webmaster/types";
+import { runWebmasterAgent, resumeWebmasterAgent, cancelWebmasterAgent } from "@/agents/webmaster/runner";
+import type { ExecutionStep, WebmasterConfig, WebmasterContext, RunResult, UserModifications } from "@/agents/webmaster/types";
 import type { ConfigFormField } from "@/agents/webmaster/config";
 
 const SECTION_ICONS: Record<string, React.ElementType> = {
@@ -75,6 +75,9 @@ export default function WebmasterPage() {
   const [steps, setSteps] = useState<ExecutionStep[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [context, setContext] = useState<WebmasterContext | null>(null);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [executionId, setExecutionId] = useState<string | null>(null);
+  const [editingPosts, setEditingPosts] = useState<Record<string, string>>({});
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ model: true, mode: true, source: true, style: true, platforms: true });
   const stepsRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,28 +113,95 @@ export default function WebmasterPage() {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const handleRunResult = (result: RunResult) => {
+    setContext(result.context);
+    if (result.status === "awaiting_confirmation") {
+      setAwaitingConfirmation(true);
+      setExecutionId(result.executionId || null);
+      // Pre-populate editing fields
+      const posts = result.context.posts || {};
+      const edits: Record<string, string> = {};
+      for (const [key, val] of Object.entries(posts)) {
+        const v = val as Record<string, unknown>;
+        edits[key] = String(v?.content || v?.fullCaption || "");
+      }
+      setEditingPosts(edits);
+      setIsRunning(false);
+    }
+  };
+
   const handleRun = async () => {
     if (isRunning) return;
     setIsRunning(true);
     setSteps([]);
     setContext(null);
+    setAwaitingConfirmation(false);
+    setExecutionId(null);
 
     try {
       const result = await runWebmasterAgent(config, (updated) => {
         setSteps([...updated]);
       });
-      setContext(result);
+      handleRunResult(result);
     } catch (err) {
       console.error("Webmaster agent error:", err);
     } finally {
+      if (!awaitingConfirmation) setIsRunning(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!executionId || !context) return;
+    setIsRunning(true);
+    setAwaitingConfirmation(false);
+
+    // Build modifications from edited posts
+    const modifications: UserModifications = {};
+    const modifiedPosts: Record<string, unknown> = {};
+    let hasChanges = false;
+    for (const [key, editedContent] of Object.entries(editingPosts)) {
+      const original = context.posts?.[key as keyof typeof context.posts] as Record<string, unknown> | undefined;
+      const origContent = String(original?.content || original?.fullCaption || "");
+      if (editedContent !== origContent) {
+        hasChanges = true;
+        modifiedPosts[key] = { ...original, content: editedContent };
+      }
+    }
+    if (hasChanges) {
+      modifications.posts = modifiedPosts as UserModifications["posts"];
+    }
+
+    try {
+      const result = await resumeWebmasterAgent(
+        config,
+        context,
+        steps,
+        executionId,
+        hasChanges ? modifications : null,
+        (updated) => setSteps([...updated]),
+      );
+      setContext(result.context);
+    } catch (err) {
+      console.error("Resume agent error:", err);
+    } finally {
       setIsRunning(false);
     }
+  };
+
+  const handleCancel = async () => {
+    if (!executionId) return;
+    setAwaitingConfirmation(false);
+    await cancelWebmasterAgent(steps, executionId, (updated) => setSteps([...updated]));
+    setIsRunning(false);
   };
 
   const handleReset = () => {
     setSteps([]);
     setContext(null);
     setIsRunning(false);
+    setAwaitingConfirmation(false);
+    setExecutionId(null);
+    setEditingPosts({});
   };
 
   useEffect(() => {
@@ -319,10 +389,10 @@ export default function WebmasterPage() {
           <div className="px-5 py-4 border-b border-gray-200 flex items-center gap-3 sticky top-0 bg-white z-10">
             <span className={cn(
               "w-2 h-2 rounded-full",
-              isRunning ? "bg-blue-500 animate-blink" : allDone ? "bg-green-500" : "bg-gray-300"
+              isRunning ? "bg-blue-500 animate-blink" : awaitingConfirmation ? "bg-amber-500 animate-blink" : allDone ? "bg-green-500" : "bg-gray-300"
             )} />
             <span className="text-sm font-semibold text-gray-950">
-              {isRunning ? "Execution en cours..." : allDone ? "Execution terminee" : "En attente de lancement"}
+              {isRunning ? "Execution en cours..." : awaitingConfirmation ? "En attente de validation" : allDone ? "Execution terminee" : "En attente de lancement"}
             </span>
             {allDone && context?.sessionReport && (
               <span className="ml-auto text-xs font-medium text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
@@ -346,6 +416,63 @@ export default function WebmasterPage() {
               </div>
             ) : (
               <ExecutionStepsView steps={steps} />
+            )}
+
+            {/* Confirmation panel */}
+            {awaitingConfirmation && context?.posts && (
+              <div className="mt-6 border-2 border-amber-300 bg-amber-50 rounded-2xl overflow-hidden">
+                <div className="px-5 py-3.5 bg-amber-100 border-b border-amber-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-amber-600" />
+                    <h3 className="text-sm font-semibold text-amber-900">Validation requise</h3>
+                  </div>
+                  <span className="text-xs text-amber-600">Modifiez le contenu si necessaire, puis validez ou annulez</span>
+                </div>
+                <div className="p-5 flex flex-col gap-4">
+                  {Object.entries(editingPosts).map(([platform, content]) => (
+                    <div key={platform}>
+                      <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5 block">
+                        {platform}
+                      </label>
+                      <textarea
+                        value={content}
+                        onChange={(e) => setEditingPosts((prev) => ({ ...prev, [platform]: e.target.value }))}
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 outline-none transition-all focus:border-amber-400 resize-y"
+                        style={{ minHeight: "120px" }}
+                      />
+                    </div>
+                  ))}
+
+                  {context.carouselProjectId && (
+                    <a
+                      href={`https://infinixui.com/editor/${context.carouselProjectId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 border border-purple-200 rounded-xl text-sm text-purple-700 font-medium hover:bg-purple-100 transition-colors w-fit"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      Modifier le carrousel sur InfinixUI
+                    </a>
+                  )}
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={handleConfirm}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 transition-colors cursor-pointer"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Valider et publier
+                    </button>
+                    <button
+                      onClick={handleCancel}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors cursor-pointer"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Session report */}

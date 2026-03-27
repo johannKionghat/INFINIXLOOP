@@ -246,6 +246,21 @@ export const CONFIG_FORM_FIELDS: ConfigFormField[] = [
   { key: "publishSlack", label: "Slack (notification)", type: "toggle", section: "platforms", defaultValue: true },
 
   // === ADVANCED ===
+  { key: "requireConfirmation", label: "Validation avant publication", type: "toggle", section: "advanced", defaultValue: false, description: "L'agent attend votre validation (email, Slack ou Notion) avant de publier. Vous pouvez modifier le contenu avant de valider." },
+  {
+    key: "confirmationChannel",
+    label: "Canal de notification",
+    type: "select",
+    section: "advanced",
+    options: [
+      { value: "email", label: "Email (Brevo)" },
+      { value: "slack", label: "Slack" },
+      { value: "notion", label: "Notion" },
+    ],
+    defaultValue: "email",
+    description: "Canal utilise pour envoyer la demande de validation.",
+    showWhen: { field: "requireConfirmation", value: "true" },
+  },
   { key: "dryRun", label: "Mode simulation (dry run)", type: "toggle", section: "advanced", defaultValue: false, description: "Genere le contenu sans publier reellement." },
 ];
 

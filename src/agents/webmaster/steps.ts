@@ -156,38 +156,18 @@ export function buildExecutionSteps(config: WebmasterConfig): ExecutionStep[] {
     steps.push({
       id: "step-gen-carousel",
       module: "Module 2C — Carrousel",
-      label: "Generation contenu carrousel",
-      description: "7 slides : couverture + 4 points cles + stat choc + CTA.",
+      label: "Generation carrousel complet",
+      description: "Contenu 7 slides + design InfinixUI + export PDF + archivage.",
       icon: "Layout",
       status: "pending",
       children: [
         { id: "sub-carousel-content", label: "Contenu des 7 slides", status: "pending" },
         { id: "sub-carousel-teasers", label: "Teasers LinkedIn + Instagram", status: "pending" },
+        { id: "sub-carousel-infinixui", label: "Design InfinixUI + export PDF", status: "pending" },
+        { id: "sub-carousel-document", label: "Sauvegarde dans Mes Documents", status: "pending" },
+        { id: "sub-carousel-notion", label: "Archivage Notion", status: "pending" },
+        { id: "sub-carousel-brevo", label: "Newsletter Brevo", status: "pending" },
       ],
-    });
-    steps.push({
-      id: "step-infinixui",
-      module: "Module 2C — Carrousel",
-      label: "InfinixUI Design Engine",
-      description: "Generation visuelle du carrousel (studio URL, preview, PDF).",
-      icon: "Layers",
-      status: "pending",
-    });
-    steps.push({
-      id: "step-notion",
-      module: "Module 2C — Carrousel",
-      label: "Archivage Notion",
-      description: "Creation d'une page Notion avec le carrousel et les posts associes.",
-      icon: "BookOpen",
-      status: "pending",
-    });
-    steps.push({
-      id: "step-brevo",
-      module: "Module 2C — Carrousel",
-      label: "Newsletter Brevo",
-      description: "Envoi email avec apercu du carrousel + lien studio + post LinkedIn.",
-      icon: "Mail",
-      status: "pending",
     });
   }
 
@@ -204,6 +184,22 @@ export function buildExecutionSteps(config: WebmasterConfig): ExecutionStep[] {
       { id: "sub-quality-refine", label: "Raffinement (si score < seuil)", status: "pending" },
     ],
   });
+
+  // ── MODULE 3B : Confirmation ──────────────────────────────────────────────
+  if (config.requireConfirmation) {
+    steps.push({
+      id: "step-confirmation",
+      module: "Module 3B — Validation",
+      label: "Validation utilisateur",
+      description: `Notification envoyee via ${config.confirmationChannel}. En attente de votre validation avant publication.`,
+      icon: "CheckCircle",
+      status: "pending",
+      children: [
+        { id: "sub-confirm-notify", label: `Envoi notification (${config.confirmationChannel})`, status: "pending" },
+        { id: "sub-confirm-wait", label: "En attente de validation", status: "pending" },
+      ],
+    });
+  }
 
   // ── MODULE 4 : Publication ────────────────────────────────────────────────
   const pubChildren = activePlatforms.map((p) => ({
