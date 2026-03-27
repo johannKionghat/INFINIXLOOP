@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+const INFINIXUI_BASE_URL = process.env.INFINIXUI_BASE_URL || "https://infinixui.com";
+
 async function getUserKey(userId: string, keyName: string): Promise<string | null> {
   const supabase = await createClient();
   const { data } = await supabase
@@ -18,28 +20,27 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await request.json();
-    const { action, slides, project_id } = body;
-
     const apiKey = await getUserKey(user.id, "infinixui_api_key");
-    const baseUrl = (await getUserKey(user.id, "infinixui_base_url")) || "https://infinixui.com";
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "Cle API InfinixUI manquante. Configurez-la dans Parametres." },
+        { error: "Cle API InfinixUI manquante. Ajoutez-la dans Parametres > Design & Carrousel." },
         { status: 400 },
       );
     }
 
+    const token = apiKey;
+
+    const body = await request.json();
+    const { action, slides, project_id } = body;
+
     const headers = {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     };
 
     // ── Create a carousel via InfinixUI /api/carousel/generate ──
     if (action === "create_carousel") {
-      // The runner sends raw carousel data (from LLM).
-      // Map it to InfinixUI's expected format.
       const carouselInput = Array.isArray(slides) ? { slides } : (slides || {});
 
       const payload = {
@@ -66,9 +67,10 @@ export async function POST(request: Request) {
         ctaUrl: carouselInput.ctaUrl || carouselInput.cta_url || "",
         highlight: carouselInput.highlight || "",
         colorPalette: carouselInput.colorPalette || undefined,
+        userId: user.id,
       };
 
-      const res = await fetch(`${baseUrl}/api/carousel/generate`, {
+      const res = await fetch(`${INFINIXUI_BASE_URL}/api/carousel/generate`, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
@@ -87,16 +89,16 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         project_id: data.id,
-        editor_url: data.studioUrl || `${baseUrl}/editor/${data.id}`,
+        editor_url: data.studioUrl || `${INFINIXUI_BASE_URL}/editor/${data.id}`,
         pdf_url: data.pdfUrl || null,
         preview_url: data.previewUrl || null,
         slide_images: data.slideImages || [],
       });
     }
 
-    // ── Export existing carousel as PDF via /api/carousel/export-pdf ──
+    // ── Export existing carousel as PDF ──
     if (action === "export_pdf") {
-      const res = await fetch(`${baseUrl}/api/carousel/export-pdf`, {
+      const res = await fetch(`${INFINIXUI_BASE_URL}/api/carousel/export-pdf`, {
         method: "POST",
         headers,
         body: JSON.stringify({ sessionId: project_id }),
@@ -121,7 +123,7 @@ export async function POST(request: Request) {
 
     // ── Get available config (templates, formats, designs) ──
     if (action === "get_config") {
-      const res = await fetch(`${baseUrl}/api/config`, { headers });
+      const res = await fetch(`${INFINIXUI_BASE_URL}/api/config`, { headers });
       if (!res.ok) {
         const err = await res.text();
         throw new Error(`InfinixUI config error (${res.status}): ${err}`);
