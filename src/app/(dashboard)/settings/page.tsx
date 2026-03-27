@@ -5,7 +5,7 @@ import {
   Settings, Save, Check, Eye, EyeOff, ExternalLink, Shield,
   Sparkles, Brain, Wind, Zap, Image as ImageIcon, Briefcase,
   AtSign, ThumbsUp, MessageCircle, Phone, Hash, BookOpen, Mail,
-  KeyRound, ChevronDown, ChevronRight, Layers,
+  KeyRound, ChevronDown, ChevronRight, Layers, LogIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -107,10 +107,14 @@ function SectionCard({
   section,
   values,
   onChange,
+  infinixuiConnected,
+  onInfinixuiLogin,
 }: {
   section: ApiKeySection;
   values: ApiKeysStore;
   onChange: (key: string, value: string) => void;
+  infinixuiConnected?: boolean;
+  onInfinixuiLogin?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const Icon = SECTION_ICON_MAP[section.icon] || KeyRound;
@@ -202,6 +206,29 @@ function SectionCard({
             ))}
           </div>
 
+          {section.id === "infinixui" && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-xs text-gray-500 mb-3">
+                Connectez-vous a votre compte InfinixUI pour pouvoir modifier vos carrousels generes.
+              </p>
+              {infinixuiConnected ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl">
+                  <Check className="w-4 h-4 text-green-600" />
+                  <span className="text-sm text-green-700 font-medium">Connecte a InfinixUI</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onInfinixuiLogin}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-950 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors cursor-pointer"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Se connecter a InfinixUI
+                </button>
+              )}
+            </div>
+          )}
+
           {!requiredMet && hasRequired && (
             <div className="mt-4 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl">
               <p className="text-xs text-amber-600 font-medium">
@@ -221,12 +248,36 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [infinixuiConnected, setInfinixuiConnected] = useState(false);
 
   useEffect(() => {
     fetchApiKeys().then((keys) => {
       setValues(keys);
       setLoaded(true);
     });
+  }, []);
+
+  // Listen for InfinixUI login success from popup
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === "infinixui-auth-success") {
+        setInfinixuiConnected(true);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  const handleInfinixuiLogin = useCallback(() => {
+    const w = 500;
+    const h = 650;
+    const left = window.screenX + (window.outerWidth - w) / 2;
+    const top = window.screenY + (window.outerHeight - h) / 2;
+    window.open(
+      "https://infinixui.com/login?from=infinixloop",
+      "infinixui-login",
+      `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no`
+    );
   }, []);
 
   const handleChange = useCallback((key: string, value: string) => {
@@ -345,6 +396,8 @@ export default function SettingsPage() {
                   section={section}
                   values={values}
                   onChange={handleChange}
+                  infinixuiConnected={section.id === "infinixui" ? infinixuiConnected : undefined}
+                  onInfinixuiLogin={section.id === "infinixui" ? handleInfinixuiLogin : undefined}
                 />
               ))}
             </div>

@@ -79,6 +79,7 @@ export default function WebmasterPage() {
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [editingPosts, setEditingPosts] = useState<Record<string, string>>({});
   const [carouselModified, setCarouselModified] = useState(false);
+  const [carouselLinkClicked, setCarouselLinkClicked] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ model: true, mode: true, source: true, style: true, platforms: true });
   const stepsRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -205,19 +206,22 @@ export default function WebmasterPage() {
     setExecutionId(null);
     setEditingPosts({});
     setCarouselModified(false);
+    setCarouselLinkClicked(false);
   };
 
   // Detect when user returns from InfinixUI tab (carousel editing)
+  // Only triggers after user has actually clicked the InfinixUI edit link
   useEffect(() => {
-    if (!awaitingConfirmation || !context?.carouselProjectId) return;
+    if (!awaitingConfirmation || !context?.carouselProjectId || !carouselLinkClicked) return;
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && carouselLinkClicked) {
         setCarouselModified(true);
+        setCarouselLinkClicked(false);
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [awaitingConfirmation, context?.carouselProjectId]);
+  }, [awaitingConfirmation, context?.carouselProjectId, carouselLinkClicked]);
 
   useEffect(() => {
     if (stepsRef.current) {
@@ -453,9 +457,10 @@ export default function WebmasterPage() {
                         </div>
                       )}
                       <a
-                        href={context.carouselEditorUrl || `https://infinixui.com/editor/${context.carouselProjectId}`}
+                        href={context.carouselEditorUrl || `https://infinixui.com/carousel/studio?session=${context.carouselProjectId}`}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => setCarouselLinkClicked(true)}
                         className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 border border-purple-200 rounded-xl text-sm text-purple-700 font-medium hover:bg-purple-100 transition-colors w-fit"
                       >
                         <Edit3 className="w-4 h-4" />
