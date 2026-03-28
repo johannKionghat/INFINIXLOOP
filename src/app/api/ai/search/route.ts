@@ -60,24 +60,39 @@ async function searchBrave(query: string): Promise<string> {
     .slice(0, 15000);
 }
 
-// Strategy 3: SearXNG public instance
+// Strategy 3: SearXNG — try configured URL then fallback instances
+const SEARXNG_INSTANCES = [
+  SEARXNG_URL,
+  "https://search.sapti.me",
+  "https://searxng.site",
+  "https://search.bus-hit.me",
+].filter(Boolean);
+
 async function searchSearXNG(query: string): Promise<string> {
-  const res = await fetch(
-    `${SEARXNG_URL}/search?q=${encodeURIComponent(query)}&format=json&engines=google,bing,duckduckgo&language=fr`,
-    {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(10000),
-    },
-  );
-  if (!res.ok) return "";
-  const data = await res.json();
-  return (data.results || [])
-    .slice(0, 10)
-    .map((r: { title: string; content: string; url: string }, i: number) =>
-      `${i + 1}. ${r.title} (${r.url})\n${r.content}`,
-    )
-    .join("\n\n")
-    .slice(0, 15000);
+  for (const instanceUrl of SEARXNG_INSTANCES) {
+    try {
+      const res = await fetch(
+        `${instanceUrl}/search?q=${encodeURIComponent(query)}&format=json&engines=google,bing,duckduckgo&language=fr`,
+        {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(8000),
+        },
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      const results = (data.results || []).slice(0, 10);
+      if (results.length === 0) continue;
+      return results
+        .map((r: { title: string; content: string; url: string }, i: number) =>
+          `${i + 1}. ${r.title} (${r.url})\n${r.content}`,
+        )
+        .join("\n\n")
+        .slice(0, 15000);
+    } catch {
+      continue; // try next instance
+    }
+  }
+  return "";
 }
 
 export async function POST(request: Request) {
@@ -100,23 +115,36 @@ export async function POST(request: Request) {
     // 1. DuckDuckGo HTML (same as nauticeai — primary)
     try {
       textContent = await searchDDG(query);
-      if (textContent.length > 100) source = "duckduckgo";
-    } catch { /* fallback */ }
-
-    // 2. Brave Search (requires API key)
-    if (!textContent && BRAVE_API_KEY) {
-      try {
-        textContent = await searchBrave(query);
-        if (textContent.length > 0) source = "brave";
-      } catch { /* fallback */ }
+      if (textContent.length > 200) source = "duckduckgo";
+      else console.warn(`[ai/search] DDG returned only ${textContent.length} chars`);
+    } catch (e) {
+      console.warn("[ai/search] DDG failed:", e instanceof Error ? e.message : e);
     }
 
-    // 3. SearXNG (no key needed)
-    if (!textContent) {
+    // 2. Brave Search (requires API key) — fallback if DDG returned too little
+    if (textContent.length <= 200 && BRAVE_API_KEY) {
       try {
-        textContent = await searchSearXNG(query);
-        if (textContent.length > 0) source = "searxng";
-      } catch { /* all failed */ }
+        const braveResult = await searchBrave(query);
+        if (braveResult.length > textContent.length) {
+          textContent = braveResult;
+          source = "brave";
+        }
+      } catch (e) {
+        console.warn("[ai/search] Brave failed:", e instanceof Error ? e.message : e);
+      }
+    }
+
+    // 3. SearXNG (no key needed) — fallback if still too little
+    if (textContent.length <= 200) {
+      try {
+        const searxResult = await searchSearXNG(query);
+        if (searxResult.length > textContent.length) {
+          textContent = searxResult;
+          source = "searxng";
+        }
+      } catch (e) {
+        console.warn("[ai/search] SearXNG failed:", e instanceof Error ? e.message : e);
+      }
     }
 
     return NextResponse.json({

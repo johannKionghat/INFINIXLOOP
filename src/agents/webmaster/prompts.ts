@@ -592,47 +592,29 @@ export function buildCarouselPromptPrompt(
     ? `${analysis.landingPageUrl}?utm_source=carousel&utm_medium=social&utm_campaign=webmaster`
     : "";
 
-  return `Tu es un expert en creation de prompts pour un moteur de design de carrousels IA (InfinixUI).
+  return `Redige un prompt COURT (max 500 mots) en francais pour un moteur IA de carrousels (InfinixUI).
 
-Ton role : a partir des informations ci-dessous, redige un PROMPT DETAILLE et RICHE en langage naturel qui sera envoye a InfinixUI pour generer un carrousel professionnel et visuellement impactant.
-
-═══ INFORMATIONS ═══
+INFORMATIONS :
 Sujet : ${analysis.productName}
-Auteur : ${analysis.authorName}, ${analysis.authorExpertise}
-Entreprise : ${analysis.companyName}
-Audience cible : ${analysis.targetAudience}
+Auteur : ${analysis.authorName}, ${analysis.authorExpertise} (${analysis.companyName})
+Audience : ${analysis.targetAudience}
 Secteur : ${analysis.sector}
-Angle editorial : ${strategy.angle}
-Valeur cle : ${strategy.coreValue}
-Preuve/donnee : ${strategy.proofElement}
+Angle : ${strategy.angle}
+Valeur : ${strategy.coreValue}
+Preuve : ${strategy.proofElement}
 Annee : ${year}
-${ctaUrl ? `Lien CTA : ${ctaUrl}` : ""}
+${ctaUrl ? `CTA : ${ctaUrl}` : ""}
 
-═══ DESIGNS DISPONIBLES SUR INFINIXUI ═══
-${designList}
+DESIGNS DISPONIBLES : ${designList}
 
-═══ CE QUE TON PROMPT DOIT CONTENIR ═══
-1. Le SUJET principal avec contexte et angle (pas juste le titre — explique l'intention)
-2. L'AUDIENCE visee et le ton (professionnel, inspirant, educatif...)
-3. Le DESIGN suggere parmi la liste ci-dessus — choisis celui qui correspond le MIEUX au sujet et a l'ambiance
-4. La STRUCTURE souhaitee : 7-9 slides avec types varies (cover, points cles, statistique choc, citation, CTA)
-5. Des DONNEES CONCRETES : au moins 1 statistique reelle avec source et annee ${year}
-6. Une CITATION inspirante ou un temoignage pertinent
-7. L'auteur et ses credentials
-8. Le CTA final (ce que le lecteur doit faire apres)
-${ctaUrl ? `9. Le lien du CTA : ${ctaUrl}` : ""}
+Le prompt doit decrire en langage naturel : le sujet, le ton, la structure (7 slides : cover, 4 points, 1 stat, 1 CTA), 1 statistique avec source ${year}, le CTA final.
 
-═══ REGLES ═══
-- Le prompt doit etre en FRANCAIS
-- Ecris en langage naturel FLUIDE (pas de JSON, pas de structure technique)
-- Sois PRECIS sur le contenu de chaque slide (pas de "ajoute du contenu pertinent")
-- Inclus des exemples concrets, des chiffres, des noms de sources
-- Le prompt doit permettre a InfinixUI de generer un carrousel COMPLET et PROFESSIONNEL sans rien inventer
+IMPORTANT : Le champ "prompt" doit faire MAXIMUM 500 mots. Pas de pavé. Va droit au but.
 
-Reponds UNIQUEMENT en JSON :
+JSON :
 {
-  "prompt": "le prompt complet en langage naturel pour InfinixUI",
-  "suggestedDesign": "le design choisi parmi la liste",
+  "prompt": "prompt court et precis pour InfinixUI (max 500 mots)",
+  "suggestedDesign": "un design parmi la liste",
   "format": "li"
 }`;
 }

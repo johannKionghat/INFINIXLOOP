@@ -435,11 +435,11 @@ export async function runWebmasterAgent(
       const promptData = await aiChatJSON<{ prompt: string; suggestedDesign?: string; format?: string }>({
         model: generationModel,
         messages: [
-          { role: "system", content: "Tu es un expert en creation de prompts pour un moteur de design IA. Reponds UNIQUEMENT en JSON valide." },
+          { role: "system", content: "Tu es un expert en creation de prompts pour un moteur de design IA. Reponds UNIQUEMENT en JSON valide. Le champ prompt doit faire MAX 500 mots." },
           { role: "user", content: promptPrompt },
         ],
-        temperature: 0.8,
-        max_tokens: 2000,
+        temperature: 0.7,
+        max_tokens: 3000,
       });
       (ctx.posts as Record<string, unknown>).carousel = promptData;
       (ctx.posts as Record<string, unknown>).carouselPrompt = promptData.prompt;
