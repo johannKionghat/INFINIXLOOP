@@ -44,6 +44,10 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action, prompt, format, project_id } = body;
 
+    // Read user's preferred InfinixUI AI model from their saved keys
+    const aiProvider = await getUserKey(user.id, "infinixui_ai_provider");
+    const aiModel = await getUserKey(user.id, "infinixui_ai_model");
+
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -67,6 +71,9 @@ export async function POST(request: Request) {
         prompt,
         format: fmt,
         userId: user.id,
+        // Pass user's preferred AI model so InfinixUI uses it instead of its default
+        ...(aiProvider && { provider: aiProvider }),
+        ...(aiModel && { modelId: aiModel }),
         // Structured fallback for old InfinixUI (legacy NoticeAI format with slides[].num)
         title: prompt.slice(0, 80),
         subtitle: "Genere par InfinixLoop",
@@ -144,6 +151,17 @@ export async function POST(request: Request) {
         pdf_url: normalizeUrl(data.pdfUrl),
         slide_images: (data.slideImages || []).map((u: string) => normalizeUrl(u) || u),
       });
+    }
+
+    // ── Get available AI providers + models from InfinixUI ──
+    if (action === "get_ai_models") {
+      const res = await fetch(`${INFINIXUI_BASE_URL}/api/ai/models`, { headers });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`InfinixUI models error (${res.status}): ${err}`);
+      }
+      const data = await res.json();
+      return NextResponse.json(data);
     }
 
     // ── Get available designs, formats, templates from InfinixUI ──

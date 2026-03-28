@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Settings, Save, Check, Eye, EyeOff, ExternalLink, Shield,
   Sparkles, Brain, Wind, Zap, Image as ImageIcon, Briefcase,
   AtSign, ThumbsUp, MessageCircle, Phone, Hash, BookOpen, Mail,
-  KeyRound, ChevronDown, ChevronRight, Layers, LogIn,
+  KeyRound, ChevronDown, ChevronRight, Layers, LogIn, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -98,6 +98,170 @@ function FieldInput({
         >
           {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
         </button>
+      )}
+    </div>
+  );
+}
+
+interface AIModel { id: string; label: string; recommended: boolean; }
+interface AIProvider { id: string; name: string; isFree: boolean; freeNote: string | null; models: AIModel[]; }
+
+function InfinixUIModelSelector({
+  apiKey,
+  selectedProvider,
+  selectedModel,
+  onSelect,
+}: {
+  apiKey: string;
+  selectedProvider: string;
+  selectedModel: string;
+  onSelect: (provider: string, model: string) => void;
+}) {
+  const [providers, setProviders] = useState<AIProvider[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const fetchedKeyRef = useRef("");
+
+  const fetchModels = useCallback(async (key: string) => {
+    if (!key || key.length < 10) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/agents/infinixui", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get_ai_models" }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.providers)) {
+        setProviders(data.providers);
+        fetchedKeyRef.current = key;
+        // Auto-select recommended if nothing chosen yet
+        if (!selectedProvider || !selectedModel) {
+          const firstProvider = data.providers[0] as AIProvider;
+          const recommended = firstProvider?.models.find((m: AIModel) => m.recommended) || firstProvider?.models[0];
+          if (firstProvider && recommended) {
+            onSelect(firstProvider.id, recommended.id);
+          }
+        }
+      } else {
+        setError("Impossible de charger les modeles — verifiez votre cle API.");
+      }
+    } catch {
+      setError("Erreur reseau lors du chargement des modeles.");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedProvider, selectedModel, onSelect]);
+
+  // Fetch when key changes (debounced)
+  useEffect(() => {
+    if (!apiKey || apiKey === fetchedKeyRef.current) return;
+    const t = setTimeout(() => fetchModels(apiKey), 600);
+    return () => clearTimeout(t);
+  }, [apiKey, fetchModels]);
+
+  const currentProvider = providers.find((p) => p.id === selectedProvider) || providers[0];
+
+  if (!apiKey || apiKey.length < 10) {
+    return (
+      <p className="text-xs text-gray-400 italic mt-1">Entrez votre cle API pour voir les modeles disponibles.</p>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Chargement des modeles...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 mt-1">
+        <p className="text-xs text-red-500 flex-1">{error}</p>
+        <button onClick={() => fetchModels(apiKey)} className="text-xs text-blue-500 underline cursor-pointer">Reessayer</button>
+      </div>
+    );
+  }
+
+  if (providers.length === 0) return null;
+
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-100">
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Modele IA pour la generation
+        </label>
+        <button
+          onClick={() => fetchModels(apiKey)}
+          className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
+        >
+          <RefreshCw className="w-3 h-3" /> Actualiser
+        </button>
+      </div>
+
+      {/* Provider tabs */}
+      <div className="flex gap-1 mb-3 flex-wrap">
+        {providers.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => {
+              const rec = p.models.find((m) => m.recommended) || p.models[0];
+              if (rec) onSelect(p.id, rec.id);
+            }}
+            className={cn(
+              "px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors border",
+              selectedProvider === p.id
+                ? "bg-gray-950 text-white border-gray-950"
+                : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+            )}
+          >
+            {p.name}
+            {p.isFree && (
+              <span className="ml-1 text-[9px] bg-green-100 text-green-700 px-1 py-0.5 rounded font-semibold">GRATUIT</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Model list for selected provider */}
+      {currentProvider && (
+        <div className="flex flex-col gap-1.5">
+          {currentProvider.models.map((m) => (
+            <label
+              key={m.id}
+              className={cn(
+                "flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors",
+                selectedProvider === currentProvider.id && selectedModel === m.id
+                  ? "bg-gray-950 border-gray-950 text-white"
+                  : "bg-white border-gray-200 text-gray-700 hover:border-gray-400"
+              )}
+            >
+              <input
+                type="radio"
+                name="infinixui_model"
+                checked={selectedProvider === currentProvider.id && selectedModel === m.id}
+                onChange={() => onSelect(currentProvider.id, m.id)}
+                className="sr-only"
+              />
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-medium">{m.label}</span>
+                {m.recommended && (
+                  <span className="ml-1.5 text-[9px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded font-semibold">RECOMMANDE</span>
+                )}
+              </div>
+              {selectedProvider === currentProvider.id && selectedModel === m.id && (
+                <Check className="w-3.5 h-3.5 shrink-0" />
+              )}
+            </label>
+          ))}
+          {currentProvider.freeNote && (
+            <p className="text-[11px] text-gray-400 mt-1">{currentProvider.freeNote}</p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -207,26 +371,40 @@ function SectionCard({
           </div>
 
           {section.id === "infinixui" && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-xs text-gray-500 mb-3">
-                Connectez-vous a votre compte InfinixUI pour pouvoir modifier vos carrousels generes.
-              </p>
-              {infinixuiConnected ? (
-                <div className="flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl">
-                  <Check className="w-4 h-4 text-green-600" />
-                  <span className="text-sm text-green-700 font-medium">Connecte a InfinixUI</span>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onInfinixuiLogin}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-950 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors cursor-pointer"
-                >
-                  <LogIn className="w-4 h-4" />
-                  Se connecter a InfinixUI
-                </button>
-              )}
-            </div>
+            <>
+              {/* AI model selector — loads dynamically from InfinixUI */}
+              <InfinixUIModelSelector
+                apiKey={values["infinixui_api_key"] || ""}
+                selectedProvider={values["infinixui_ai_provider"] || ""}
+                selectedModel={values["infinixui_ai_model"] || ""}
+                onSelect={(provider, model) => {
+                  onChange("infinixui_ai_provider", provider);
+                  onChange("infinixui_ai_model", model);
+                }}
+              />
+
+              {/* Connect account */}
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-500 mb-3">
+                  Connectez-vous a votre compte InfinixUI pour pouvoir modifier vos carrousels generes.
+                </p>
+                {infinixuiConnected ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl">
+                    <Check className="w-4 h-4 text-green-600" />
+                    <span className="text-sm text-green-700 font-medium">Connecte a InfinixUI</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onInfinixuiLogin}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gray-950 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors cursor-pointer"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    Se connecter a InfinixUI
+                  </button>
+                )}
+              </div>
+            </>
           )}
 
           {!requiredMet && hasRequired && (
