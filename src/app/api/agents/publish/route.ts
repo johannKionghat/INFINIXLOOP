@@ -7,6 +7,8 @@ interface PublishRequest {
   hashtags?: string[];
   thread?: string[];
   imageUrl?: string;
+  pdfUrl?: string;        // LinkedIn document (carousel) post
+  carouselTitle?: string; // Title for the LinkedIn document post
 }
 
 // ── Fetch user API keys ─────────────────────────────────────────────────────
@@ -30,6 +32,8 @@ async function publishLinkedin(
   keys: Record<string, string>,
   content: string,
   imageUrl?: string,
+  pdfUrl?: string,
+  carouselTitle?: string,
 ): Promise<{ postId?: string }> {
   const token = keys.linkedin_access_token;
   const authorUrn = keys.linkedin_person_urn;
@@ -43,7 +47,6 @@ async function publishLinkedin(
     "X-Restli-Protocol-Version": "2.0.0",
   };
 
-  // Build post body
   const body: Record<string, unknown> = {
     author: authorUrn,
     commentary: content,
@@ -56,9 +59,40 @@ async function publishLinkedin(
     lifecycleState: "PUBLISHED",
   };
 
-  // If image, upload first then attach
-  if (imageUrl) {
-    // Step 1: Initialize upload
+  // ── PDF carousel document post (LinkedIn document) ──
+  if (pdfUrl) {
+    // Step 1: Initialize document upload
+    const initRes = await fetch("https://api.linkedin.com/rest/documents?action=initializeUpload", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ initializeUploadRequest: { owner: authorUrn } }),
+    });
+    if (!initRes.ok) {
+      const err = await initRes.text();
+      throw new Error(`LinkedIn document init failed (${initRes.status}): ${err}`);
+    }
+    const initData = await initRes.json();
+    const uploadUrl = initData.value?.uploadUrl;
+    const documentId = initData.value?.document;
+
+    // Step 2: Download PDF
+    const pdfRes = await fetch(pdfUrl);
+    if (!pdfRes.ok) throw new Error(`Impossible de telecharger le PDF: ${pdfUrl}`);
+    const pdfBuffer = await pdfRes.arrayBuffer();
+
+    // Step 3: Upload PDF binary to LinkedIn
+    const uploadRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/pdf" },
+      body: pdfBuffer,
+    });
+    if (!uploadRes.ok) throw new Error(`LinkedIn PDF upload failed (${uploadRes.status})`);
+
+    // Attach document to post
+    body.content = { media: { title: carouselTitle || "Carrousel", id: documentId } };
+
+  // ── Image post ──
+  } else if (imageUrl) {
     const initRes = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
       method: "POST",
       headers,
@@ -72,7 +106,6 @@ async function publishLinkedin(
     const uploadUrl = initData.value?.uploadUrl;
     const imageId = initData.value?.image;
 
-    // Step 2: Upload the image
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error(`Impossible de telecharger l'image: ${imageUrl}`);
     const imgBuffer = await imgRes.arrayBuffer();
@@ -84,7 +117,6 @@ async function publishLinkedin(
     });
     if (!uploadRes.ok) throw new Error(`LinkedIn image upload failed (${uploadRes.status})`);
 
-    // Attach image to post
     body.content = { media: { title: "Image", id: imageId } };
   }
 
@@ -216,7 +248,7 @@ export async function POST(request: Request) {
     }
 
     const body: PublishRequest = await request.json();
-    const { platform, content, hashtags, thread, imageUrl } = body;
+    const { platform, content, hashtags, thread, imageUrl, pdfUrl, carouselTitle } = body;
 
     if (!platform || !content) {
       return NextResponse.json({ error: "platform and content required" }, { status: 400 });
@@ -230,7 +262,7 @@ export async function POST(request: Request) {
         const fullContent = hashtags?.length
           ? `${content}\n\n${hashtags.join(" ")}`
           : content;
-        result = await publishLinkedin(keys, fullContent, imageUrl);
+        result = await publishLinkedin(keys, fullContent, imageUrl, pdfUrl, carouselTitle);
         break;
       }
       case "twitter": {

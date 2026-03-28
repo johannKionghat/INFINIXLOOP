@@ -133,6 +133,17 @@ export default function DocumentsPage() {
                 key={doc.id}
                 className="bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors"
               >
+                {/* Preview image for carousels */}
+                {doc.type === "carousel" && (doc.metadata as Record<string, string>)?.preview_image && (
+                  <div className="w-full h-24 rounded-lg overflow-hidden mb-3 bg-gray-100">
+                    <img
+                      src={(doc.metadata as Record<string, string>).preview_image}
+                      alt={doc.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+
                 <div className="flex items-start gap-3 mb-3">
                   <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", tc.color)}>
                     <Icon className="w-4 h-4" />
@@ -198,7 +209,7 @@ export default function DocumentsPage() {
             </div>
             <div className="p-4 overflow-y-auto max-h-[60vh]">
               {previewDoc.file_url && previewDoc.type === "pdf" && (
-                <iframe src={previewDoc.file_url} className="w-full h-[500px] rounded-lg border" />
+                <iframe src={previewDoc.file_url} className="w-full h-125 rounded-lg border" />
               )}
               {previewDoc.file_url && previewDoc.type === "image" && (
                 <img src={previewDoc.file_url} className="w-full rounded-lg" alt={previewDoc.title} />

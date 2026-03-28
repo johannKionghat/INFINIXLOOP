@@ -664,6 +664,7 @@ export async function runWebmasterAgent(
         ctx.carouselProjectId = infinixuiData.project_id;
         ctx.carouselPdfUrl = infinixuiData.pdf_url;
         ctx.carouselEditorUrl = infinixuiData.editor_url;
+        ctx.carouselSlideImages = infinixuiData.slide_images || [];
         updateSubStep(steps, "step-gen-carousel", "sub-carousel-infinixui", {
           status: "done",
           output: `Carrousel genere par InfinixUI (ID: ${infinixuiData.project_id}) — Design: ${infinixuiData.design_id || "auto"}`,
@@ -698,7 +699,13 @@ export async function runWebmasterAgent(
           description: ctx.contentStrategy?.angle,
           file_url: ctx.carouselPdfUrl || null,
           content: ctx.posts || {},
-          metadata: { publicationMode: config.publicationMode, postStyle: config.postStyle, infinixui_editor_url: ctx.carouselEditorUrl || null },
+          metadata: {
+            publicationMode: config.publicationMode,
+            postStyle: config.postStyle,
+            infinixui_editor_url: ctx.carouselEditorUrl || null,
+            slide_images: ctx.carouselSlideImages || [],
+            preview_image: ctx.carouselSlideImages?.[0] || null,
+          },
           infinixui_project_id: ctx.carouselProjectId || null,
         }),
       });
@@ -1084,7 +1091,13 @@ async function runPublicationPhase(
         if (apiPlatform === "linkedin" && ctx.posts?.linkedin) {
           publishPayload.content = ctx.posts.linkedin.content;
           publishPayload.hashtags = ctx.posts.linkedin.hashtags;
-          if (config.uploadedImageUrl) publishPayload.imageUrl = config.uploadedImageUrl;
+          // CAROUSEL mode: publish PDF as LinkedIn document post
+          if (config.publicationMode === "CAROUSEL" && ctx.carouselPdfUrl) {
+            publishPayload.pdfUrl = ctx.carouselPdfUrl;
+            publishPayload.carouselTitle = ctx.productAnalysis?.productName || "Carrousel";
+          } else if (config.uploadedImageUrl) {
+            publishPayload.imageUrl = config.uploadedImageUrl;
+          }
         } else if (apiPlatform === "twitter" && ctx.posts?.twitter) {
           publishPayload.content = ctx.posts.twitter.content;
           publishPayload.thread = ctx.posts.twitter.thread;

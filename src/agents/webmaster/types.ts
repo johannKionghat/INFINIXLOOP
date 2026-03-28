@@ -104,6 +104,7 @@ export interface WebmasterContext {
   carouselProjectId?: string;
   carouselPdfUrl?: string;
   carouselEditorUrl?: string;
+  carouselSlideImages?: string[];
 }
 
 export interface ProductAnalysis {
