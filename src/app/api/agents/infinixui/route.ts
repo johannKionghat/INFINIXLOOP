@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       "Content-Type": "application/json",
     };
 
-    // ── Create a carousel via InfinixUI (prompt-based — LLM generates the design) ──
+    // ── Create a carousel via InfinixUI ──
     if (action === "create_carousel") {
       if (!prompt || typeof prompt !== "string") {
         return NextResponse.json(
@@ -58,10 +58,32 @@ export async function POST(request: Request) {
         );
       }
 
+      const fmt = format || "li";
+
+      // Send prompt for new InfinixUI (LLM-based) + structured fallback for old InfinixUI
+      // Old InfinixUI ignores "prompt" and uses the structured fields as CarouselData
       const payload = {
+        // New InfinixUI: prompt-based generation
         prompt,
-        format: format || "li",
+        format: fmt,
         userId: user.id,
+        // Structured fallback for old InfinixUI (legacy NoticeAI format with slides[].num)
+        title: prompt.slice(0, 80),
+        subtitle: "Genere par InfinixLoop",
+        author: "",
+        tag: "InfinixLoop",
+        design: body.suggestedDesign || "tech",
+        slides: [
+          { num: "01", title: "Introduction", body: prompt.slice(0, 150), tip: "" },
+          { num: "02", title: "Point cle", body: prompt.slice(150, 300) || "Contenu a editer dans le studio", tip: "" },
+          { num: "03", title: "A retenir", body: "Ouvrez le studio InfinixUI pour personnaliser ce carrousel", tip: "" },
+        ],
+        stat_number: "100%",
+        stat_label: "Personnalisable dans le studio InfinixUI",
+        stat_source: "InfinixUI — " + new Date().getFullYear(),
+        cta_title: "Decouvrir plus",
+        cta_body: "Modifiez ce carrousel dans le studio InfinixUI",
+        cta_btn: "Ouvrir le studio",
       };
 
       const res = await fetch(`${INFINIXUI_BASE_URL}/api/carousel/generate`, {
@@ -83,8 +105,9 @@ export async function POST(request: Request) {
 
       // Build the correct studio URL ourselves
       const sessionId = data.id;
-      const studioParams = new URLSearchParams({ session: sessionId, format: payload.format });
-      if (data.designId) studioParams.set("design", data.designId);
+      const studioParams = new URLSearchParams({ session: sessionId, format: fmt });
+      const designId = data.designId || body.suggestedDesign || "tech";
+      studioParams.set("design", designId);
       const studioUrl = `${INFINIXUI_BASE_URL}/carousel/studio?${studioParams}`;
 
       return NextResponse.json({
@@ -93,7 +116,7 @@ export async function POST(request: Request) {
         pdf_url: normalizeUrl(data.pdfUrl),
         preview_url: normalizeUrl(data.previewUrl),
         slide_images: (data.slideImages || []).map((u: string) => normalizeUrl(u) || u),
-        design_id: data.designId,
+        design_id: designId,
         explanation: data.explanation,
       });
     }

@@ -656,6 +656,7 @@ export async function runWebmasterAgent(
           action: "create_carousel",
           prompt: carouselPrompt,
           format: (carouselMeta.format as string) || "li",
+          suggestedDesign: (carouselMeta.suggestedDesign as string) || "tech",
         }),
       });
       const infinixuiData = await infinixuiRes.json();
