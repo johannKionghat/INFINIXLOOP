@@ -157,6 +157,31 @@ export async function POST(request: Request) {
       return NextResponse.json(data);
     }
 
+    // ── Get a short-lived login token to auto-connect the user to InfinixUI ──
+    if (action === "get_login_token") {
+      const studioUrl: string = body.studio_url;
+      if (!studioUrl) return NextResponse.json({ error: "studio_url requis" }, { status: 400 });
+
+      try {
+        const res = await fetch(`${INFINIXUI_BASE_URL}/api/auth/cross-app-token`, {
+          method: "POST",
+          headers,
+        });
+
+        if (!res.ok) {
+          // Non-blocking: return URL as-is if token generation fails
+          return NextResponse.json({ studio_url: studioUrl });
+        }
+
+        const data = await res.json();
+        const url = new URL(studioUrl);
+        url.searchParams.set("xat", data.token);
+        return NextResponse.json({ studio_url: url.toString() });
+      } catch {
+        return NextResponse.json({ studio_url: studioUrl });
+      }
+    }
+
     return NextResponse.json({ error: "Action non supportee" }, { status: 400 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

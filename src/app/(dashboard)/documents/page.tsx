@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { FolderOpen, FileText, Layers, Image, BarChart2, ExternalLink, Download, Eye, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +29,26 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const [openingStudio, setOpeningStudio] = useState<string | null>(null);
+
+  /** Get a cross-app login token from InfinixUI, then open the studio URL */
+  const openStudio = useCallback(async (docId: string, baseUrl: string) => {
+    setOpeningStudio(docId);
+    try {
+      const res = await fetch("/api/agents/infinixui", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get_login_token", studio_url: baseUrl }),
+      });
+      const data = await res.json();
+      window.open(data.studio_url || baseUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      window.open(baseUrl, "_blank", "noopener,noreferrer");
+    } finally {
+      setOpeningStudio(null);
+    }
+  }, []);
 
   useEffect(() => {
     fetchDocuments();
@@ -125,17 +145,19 @@ export default function DocumentsPage() {
                   </div>
                 </div>
 
-                {doc.infinixui_project_id && (
-                  <a
-                    href={(doc.metadata as Record<string, string>)?.infinixui_editor_url || `https://infinixui.com/carousel/studio?session=${doc.infinixui_project_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-3 py-2 mb-3 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-700 font-medium hover:bg-purple-100 transition-colors"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Ouvrir et modifier sur InfinixUI
-                  </a>
-                )}
+                {doc.infinixui_project_id && (() => {
+                  const studioBase = (doc.metadata as Record<string, string>)?.infinixui_editor_url || `https://infinixui.com/carousel/studio?session=${doc.infinixui_project_id}`;
+                  return (
+                    <button
+                      onClick={() => openStudio(doc.id, studioBase)}
+                      disabled={openingStudio === doc.id}
+                      className="flex items-center gap-2 px-3 py-2 mb-3 w-full bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-700 font-medium hover:bg-purple-100 transition-colors disabled:opacity-60 cursor-pointer"
+                    >
+                      {openingStudio === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                      Ouvrir et modifier sur InfinixUI
+                    </button>
+                  );
+                })()}
 
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-400">{formatDate(doc.created_at)}</span>
@@ -201,16 +223,19 @@ export default function DocumentsPage() {
                   <Download className="w-4 h-4" /> Telecharger
                 </a>
               )}
-              {previewDoc.infinixui_project_id && (
-                <a
-                  href={(previewDoc.metadata as Record<string, string>)?.infinixui_editor_url || `https://infinixui.com/carousel/studio?session=${previewDoc.infinixui_project_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-                >
-                  <ExternalLink className="w-4 h-4" /> Editer sur InfinixUI
-                </a>
-              )}
+              {previewDoc.infinixui_project_id && (() => {
+                const studioBase = (previewDoc.metadata as Record<string, string>)?.infinixui_editor_url || `https://infinixui.com/carousel/studio?session=${previewDoc.infinixui_project_id}`;
+                return (
+                  <button
+                    onClick={() => openStudio(previewDoc.id, studioBase)}
+                    disabled={openingStudio === previewDoc.id}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-60 cursor-pointer"
+                  >
+                    {openingStudio === previewDoc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+                    Editer sur InfinixUI
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
